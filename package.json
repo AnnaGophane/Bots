@@ -1,4 +1,17 @@
 {
+  "name": "my-project",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
+
+{
   "name": "telegram-auto-forward-bot",
   "version": "1.0.0",
   "description": "Telegram bot for auto-forwarding messages between chats",
