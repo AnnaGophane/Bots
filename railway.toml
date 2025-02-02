@@ -4,11 +4,10 @@ buildCommand = "npm install"
 
 [deploy]
 startCommand = "npm start"
+restartPolicy = "ON_FAILURE"
 healthcheckPath = "/"
 healthcheckTimeout = 100
-restartPolicy = "ON_FAILURE"
-numReplicas = 1
 
 [service]
-name = "bots-app"
+name = "discord-bot"
 
