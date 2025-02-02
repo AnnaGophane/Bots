@@ -53,6 +53,56 @@ if (process.env.NODE_ENV === 'production') {
   bot.startPolling();
 }
 
+// Set up bot commands when starting
+async function setupBotCommands() {
+  try {
+    await bot.setMyCommands([
+      { command: 'start', description: 'Start the bot and get help' },
+      { command: 'add_source', description: 'Add a source chat (Format: /add_source -100123456789)' },
+      { command: 'add_destinations', description: 'Add multiple destination chats (Format: /add_destinations -100123456789 -100987654321)' },
+      { command: 'list_sources', description: 'List all source chats' },
+      { command: 'list_destinations', description: 'List all destination chats' },
+      { command: 'remove_source', description: 'Remove a source chat (Format: /remove_source -100123456789)' },
+      { command: 'remove_destination', description: 'Remove a destination chat (Format: /remove_destination -100123456789)' },
+      { command: 'clone', description: 'Clone this bot with a new token (Admin only)' },
+      { command: 'status', description: 'Show bot status' },
+      { command: 'help', description: 'Show help message' }
+    ]);
+    logger.info('Bot commands set up successfully');
+  } catch (error) {
+    logger.error('Error setting up bot commands:', error);
+  }
+}
+
+// Welcome message handler
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  const username = msg.from.username || msg.from.first_name;
+  
+  const welcomeMessage = `
+Welcome ${username}! 🤖
+
+I'm an Auto-Forward bot that can help you forward messages between chats without the forwarded tag.
+
+*Main Commands:*
+/add_source - Add a source chat
+/add_destinations - Add multiple destination chats
+/list_sources - List all source chats
+/list_destinations - List all destination chats
+/status - Check bot status
+/help - Show all commands
+
+*Examples:*
+• Add source: /add_source -100123456789
+• Add multiple destinations: /add_destinations -100123456789 -100987654321 -100555555555
+• Remove destination: /remove_destination -100123456789
+
+Note: Some commands require admin privileges.
+`;
+
+  await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+});
+
 // Rate limiting
 const messageCounter = new Map();
 
@@ -101,13 +151,11 @@ async function cloneBot(msg, newBotToken) {
       return;
     }
 
-    // Validate bot token
     if (!newBotToken || !/^\d+:[A-Za-z0-9_-]{35}$/.test(newBotToken)) {
       await bot.sendMessage(msg.chat.id, 'Please provide a valid bot token.');
       return;
     }
 
-    // Create new bot instance with the same configuration
     const clonedBotConfig = {
       ...botConfig,
       botToken: newBotToken,
@@ -117,10 +165,9 @@ async function cloneBot(msg, newBotToken) {
         keywords: [],
         types: ["text", "photo", "video", "document"]
       },
-      admins: [msg.from.id] // Set the creator as the admin
+      admins: [msg.from.id]
     };
 
-    // Create new bot instance
     const clonedBot = new TelegramBot(newBotToken, {
       webHook: process.env.NODE_ENV === 'production'
     });
@@ -132,14 +179,13 @@ async function cloneBot(msg, newBotToken) {
       clonedBot.startPolling();
     }
 
-    // Store the cloned bot instance
     botConfig.clonedBots.set(newBotToken, {
       bot: clonedBot,
       config: clonedBotConfig
     });
 
-    // Set up event handlers for the cloned bot
     setupBotEventHandlers(clonedBot, clonedBotConfig);
+    await setupBotCommands(); // Set up commands for cloned bot
 
     await bot.sendMessage(msg.chat.id, 
       'Bot cloned successfully! You are set as the admin. Use /help to see available commands.'
@@ -189,12 +235,17 @@ function saveConfig() {
 
 // Admin commands
 async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
-  if (!config.admins.includes(msg.from.id)) {
-    return;
-  }
-
   const text = msg.text;
   const chatId = msg.chat.id;
+
+  // Check if user is admin for protected commands
+  const isAdmin = config.admins.includes(msg.from.id);
+  const requiresAdmin = ['/add_source', '/add_destinations', '/remove_source', '/remove_destination', '/clone'].some(cmd => text.startsWith(cmd));
+  
+  if (requiresAdmin && !isAdmin) {
+    await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges.');
+    return;
+  }
 
   if (text.startsWith('/clone')) {
     const newBotToken = text.split(' ')[1];
@@ -205,189 +256,192 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   if (text.startsWith('/add_source')) {
     const sourceId = parseInt(text.split(' ')[1]);
     if (!sourceId) {
-      await botInstance.sendMessage(chatId, 'Please provide a valid chat ID');
+      await botInstance.sendMessage(chatId, '⚠️ Please provide a valid chat ID\nFormat: /add_source -100123456789');
       return;
     }
     if (!config.sourceChats.includes(sourceId)) {
       config.sourceChats.push(sourceId);
       saveConfig();
-      await botInstance.sendMessage(chatId, 'Source chat added successfully');
+      await botInstance.sendMessage(chatId, '✅ Source chat added successfully');
     } else {
-      await botInstance.sendMessage(chatId, 'This chat is already a source');
+      await botInstance.sendMessage(chatId, '⚠️ This chat is already a source');
     }
   }
 
-  else if (text.startsWith('/add_destination')) {
-    const destId = parseInt(text.split(' ')[1]);
-    if (!destId) {
-      await botInstance.sendMessage(chatId, 'Please provide a valid chat ID');
+  // New command to add multiple destinations at once
+  else if (text.startsWith('/add_destinations')) {
+    const destIds = text.split(' ').slice(1).map(id => parseInt(id));
+    if (destIds.length === 0) {
+      await botInstance.sendMessage(chatId, 
+        '⚠️ Please provide at least one valid chat ID\n' +
+        'Format: /add_destinations -100123456789 -100987654321 ...'
+      );
       return;
     }
-    if (!config.destinationChats.includes(destId)) {
-      config.destinationChats.push(destId);
-      saveConfig();
-      await botInstance.sendMessage(chatId, 'Destination chat added successfully');
-    } else {
-      await botInstance.sendMessage(chatId, 'This chat is already a destination');
-    }
-  }
 
-  else if (text.startsWith('/add_keyword')) {
-    const keyword = text.split(' ').slice(1).join(' ').toLowerCase();
-    if (!keyword) {
-      await botInstance.sendMessage(chatId, 'Please provide a keyword');
-      return;
+    let added = 0;
+    let skipped = 0;
+    
+    for (const destId of destIds) {
+      if (!destId) continue;
+      
+      if (!config.destinationChats.includes(destId)) {
+        config.destinationChats.push(destId);
+        added++;
+      } else {
+        skipped++;
+      }
     }
-    if (!config.filters.keywords.includes(keyword)) {
-      config.filters.keywords.push(keyword);
-      saveConfig();
-      await botInstance.sendMessage(chatId, 'Keyword added successfully');
-    } else {
-      await botInstance.sendMessage(chatId, 'This keyword already exists');
-    }
+    
+    saveConfig();
+    
+    const message = [
+      added > 0 ? `✅ Added ${added} new destination${added > 1 ? 's' : ''}` : '',
+      skipped > 0 ? `⚠️ Skipped ${skipped} existing destination${skipped > 1 ? 's' : ''}` : ''
+    ].filter(Boolean).join('\n');
+    
+    await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
   }
 
   else if (text === '/list_sources') {
-    const sources = config.sourceChats.join('\n');
-    await botInstance.sendMessage(chatId, `Source chats:\n${sources || 'None'}`);
+    const sources = config.sourceChats.length > 0 
+      ? config.sourceChats.map(id => `• ${id}`).join('\n')
+      : 'No source chats configured';
+    await botInstance.sendMessage(chatId, `📋 *Source Chats:*\n${sources}`, { parse_mode: 'Markdown' });
   }
 
   else if (text === '/list_destinations') {
-    const destinations = config.destinationChats.join('\n');
-    await botInstance.sendMessage(chatId, `Destination chats:\n${destinations || 'None'}`);
-  }
-
-  else if (text === '/list_keywords') {
-    const keywords = config.filters.keywords.join('\n');
-    await botInstance.sendMessage(chatId, `Keywords:\n${keywords || 'None'}`);
+    const destinations = config.destinationChats.length > 0
+      ? config.destinationChats.map(id => `• ${id}`).join('\n')
+      : 'No destination chats configured';
+    await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { parse_mode: 'Markdown' });
   }
 
   else if (text.startsWith('/remove_source')) {
     const sourceId = parseInt(text.split(' ')[1]);
     if (!sourceId) {
-      await botInstance.sendMessage(chatId, 'Please provide a valid chat ID');
+      await botInstance.sendMessage(chatId, '⚠️ Please provide a valid chat ID\nFormat: /remove_source -100123456789');
       return;
     }
-    config.sourceChats = config.sourceChats.filter(id => id !== sourceId);
-    saveConfig();
-    await botInstance.sendMessage(chatId, 'Source chat removed successfully');
+    if (config.sourceChats.includes(sourceId)) {
+      config.sourceChats = config.sourceChats.filter(id => id !== sourceId);
+      saveConfig();
+      await botInstance.sendMessage(chatId, '✅ Source chat removed successfully');
+    } else {
+      await botInstance.sendMessage(chatId, '⚠️ This chat is not in your source list');
+    }
   }
 
   else if (text.startsWith('/remove_destination')) {
     const destId = parseInt(text.split(' ')[1]);
     if (!destId) {
-      await botInstance.sendMessage(chatId, 'Please provide a valid chat ID');
+      await botInstance.sendMessage(chatId, '⚠️ Please provide a valid chat ID\nFormat: /remove_destination -100123456789');
       return;
     }
-    config.destinationChats = config.destinationChats.filter(id => id !== destId);
-    saveConfig();
-    await botInstance.sendMessage(chatId, 'Destination chat removed successfully');
-  }
-
-  else if (text.startsWith('/remove_keyword')) {
-    const keyword = text.split(' ').slice(1).join(' ').toLowerCase();
-    if (!keyword) {
-      await botInstance.sendMessage(chatId, 'Please provide a keyword');
-      return;
+    if (config.destinationChats.includes(destId)) {
+      config.destinationChats = config.destinationChats.filter(id => id !== destId);
+      saveConfig();
+      await botInstance.sendMessage(chatId, '✅ Destination chat removed successfully');
+    } else {
+      await botInstance.sendMessage(chatId, '⚠️ This chat is not in your destination list');
     }
-    config.filters.keywords = config.filters.keywords.filter(k => k !== keyword);
-    saveConfig();
-    await botInstance.sendMessage(chatId, 'Keyword removed successfully');
   }
 
   else if (text === '/help') {
     const helpText = `
-Available commands:
-/clone [bot_token] - Clone this bot with a new token
-/add_source [chat_id] - Add a source chat
-/add_destination [chat_id] - Add a destination chat
-/add_keyword [keyword] - Add a keyword filter
-/list_sources - List all source chats
-/list_destinations - List all destination chats
-/list_keywords - List all keyword filters
-/remove_source [chat_id] - Remove a source chat
-/remove_destination [chat_id] - Remove a destination chat
-/remove_keyword [keyword] - Remove a keyword filter
-/status - Show bot status
-/help - Show this help message
+*Available Commands:*
+
+${isAdmin ? '*Admin Commands:*\n' : ''}${isAdmin ? `• /clone [bot_token] - Clone this bot
+• /add_source [chat_id] - Add source chat
+• /add_destinations [chat_id1] [chat_id2] ... - Add multiple destinations
+• /remove_source [chat_id] - Remove source
+• /remove_destination [chat_id] - Remove destination\n` : ''}
+*General Commands:*
+• /list_sources - Show source chats
+• /list_destinations - Show destinations
+• /status - Show bot status
+• /help - Show this message
+
+*Examples:*
+• /add_source -100123456789
+• /add_destinations -100123456789 -100987654321
+• /remove_destination -100123456789
+
+${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}
     `.trim();
-    await botInstance.sendMessage(chatId, helpText);
+    await botInstance.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
   }
 
   else if (text === '/status') {
     const status = `
-Bot Status:
-Sources: ${config.sourceChats.length}
-Destinations: ${config.destinationChats.length}
-Keywords: ${config.filters.keywords.length}
-Message Types: ${config.filters.types.join(', ')}
-Rate Limit: ${config.rateLimit.maxMessages} msgs/${config.rateLimit.timeWindow}s
+*Bot Status:*
+• Sources: ${config.sourceChats.length}
+• Destinations: ${config.destinationChats.length}
+• Keywords: ${config.filters.keywords.length}
+• Message Types: ${config.filters.types.join(', ')}
+• Rate Limit: ${config.rateLimit.maxMessages} msgs/${config.rateLimit.timeWindow}s
+
+*Active Chats:*
+Sources:
+${config.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}
+
+Destinations:
+${config.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}
     `.trim();
-    await botInstance.sendMessage(chatId, status);
+    await botInstance.sendMessage(chatId, status, { parse_mode: 'Markdown' });
   }
 }
 
 // Clean forward message function
 async function cleanForwardMessage(msg, botInstance, destChat) {
   try {
-    // Handle different message types
     if (msg.text) {
-      // Text messages
       await botInstance.sendMessage(destChat, msg.text, {
         parse_mode: msg.parse_mode || 'HTML',
         disable_web_page_preview: msg.disable_web_page_preview
       });
     } 
     else if (msg.photo) {
-      // Photo messages
-      const photo = msg.photo[msg.photo.length - 1]; // Get highest quality photo
+      const photo = msg.photo[msg.photo.length - 1];
       await botInstance.sendPhoto(destChat, photo.file_id, {
         caption: msg.caption,
         parse_mode: msg.caption_parse_mode || 'HTML'
       });
     }
     else if (msg.video) {
-      // Video messages
       await botInstance.sendVideo(destChat, msg.video.file_id, {
         caption: msg.caption,
         parse_mode: msg.caption_parse_mode || 'HTML'
       });
     }
     else if (msg.document) {
-      // Document messages
       await botInstance.sendDocument(destChat, msg.document.file_id, {
         caption: msg.caption,
         parse_mode: msg.caption_parse_mode || 'HTML'
       });
     }
     else if (msg.audio) {
-      // Audio messages
       await botInstance.sendAudio(destChat, msg.audio.file_id, {
         caption: msg.caption,
         parse_mode: msg.caption_parse_mode || 'HTML'
       });
     }
     else if (msg.voice) {
-      // Voice messages
       await botInstance.sendVoice(destChat, msg.voice.file_id, {
         caption: msg.caption,
         parse_mode: msg.caption_parse_mode || 'HTML'
       });
     }
     else if (msg.video_note) {
-      // Video note messages
       await botInstance.sendVideoNote(destChat, msg.video_note.file_id);
     }
     else if (msg.sticker) {
-      // Sticker messages
       await botInstance.sendSticker(destChat, msg.sticker.file_id);
     }
     else if (msg.location) {
-      // Location messages
       await botInstance.sendLocation(destChat, msg.location.latitude, msg.location.longitude);
     }
     else if (msg.poll) {
-      // Poll messages
       await botInstance.sendPoll(destChat, msg.poll.question, msg.poll.options.map(opt => opt.text), {
         is_anonymous: msg.poll.is_anonymous,
         type: msg.poll.type,
@@ -396,7 +450,6 @@ async function cleanForwardMessage(msg, botInstance, destChat) {
       });
     }
     else if (msg.animation) {
-      // Animation/GIF messages
       await botInstance.sendAnimation(destChat, msg.animation.file_id, {
         caption: msg.caption,
         parse_mode: msg.caption_parse_mode || 'HTML'
@@ -416,7 +469,7 @@ async function cleanForwardMessage(msg, botInstance, destChat) {
   }
 }
 
-// Update the forwardMessage function to use clean forwarding
+// Forward message function
 async function forwardMessage(msg, botInstance = bot, config = botConfig) {
   try {
     if (!config.sourceChats.includes(msg.chat.id)) {
@@ -433,7 +486,6 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
     }
     
     for (const destChat of config.destinationChats) {
-      // Use clean forward instead of telegram's forward method
       const success = await cleanForwardMessage(msg, botInstance, destChat);
       
       if (success) {
@@ -460,5 +512,8 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
 
 // Set up event handlers for main bot
 setupBotEventHandlers(bot, botConfig);
+
+// Set up bot commands when starting
+setupBotCommands();
 
 logger.info('Bot started successfully');
