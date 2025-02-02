@@ -12,21 +12,21 @@ A Node.js bot that automatically forwards messages between Telegram chats/channe
 - Admin commands for configuration
 - Logging of forwarded messages
 - Bot cloning functionality
-- Heroku deployment support
+- Railway deployment support
 
 ## Prerequisites
 
 - Node.js 18 or higher
 - A Telegram Bot Token (get it from [@BotFather](https://t.me/botfather))
 - Chat IDs of source and destination chats
-- Heroku account (for deployment)
+- Railway account (for deployment)
 
 ## Local Development
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/telegram-auto-forward-bot.git
-cd telegram-auto-forward-bot
+git clone https://github.com/AnnaGophane/Bots.git
+cd Bots
 ```
 
 2. Install dependencies:
@@ -61,53 +61,32 @@ npm start
 - `/status` - Show bot status
 - `/help` - Show help message
 
-## Bot Cloning
+## Railway Deployment
 
-To clone the bot:
+1. Fork this repository to your GitHub account
 
-1. Create a new bot with [@BotFather](https://t.me/botfather)
-2. Get the new bot's token
-3. Use the `/clone [new_bot_token]` command with your new bot token
-4. The new bot will be created with the same functionality
-5. You'll be set as the admin of the new bot
-6. Configure the new bot's source and destination chats
+2. Create a new project on Railway and connect it to your GitHub repository
 
-## Heroku Deployment
-
-1. Create a new Heroku app:
-```bash
-heroku create your-app-name
+3. Add the following environment variables in Railway:
+```
+BOT_TOKEN=your_bot_token_here
+SOURCE_CHATS=[-100123456789]
+DESTINATION_CHATS=[-100987654321]
+FILTER_KEYWORDS=["important","announcement"]
+FILTER_TYPES=["text","photo","video","document"]
+RATE_LIMIT_MAX=10
+RATE_LIMIT_WINDOW=60
+NODE_ENV=production
+ADMIN_USERS=[123456789]
 ```
 
-2. Set up environment variables in Heroku:
-```bash
-heroku config:set BOT_TOKEN=your_bot_token_here
-heroku config:set SOURCE_CHATS='[-100123456789]'
-heroku config:set DESTINATION_CHATS='[-100987654321]'
-heroku config:set FILTER_KEYWORDS='["important","announcement"]'
-heroku config:set FILTER_TYPES='["text","photo","video","document"]'
-heroku config:set RATE_LIMIT_MAX=10
-heroku config:set RATE_LIMIT_WINDOW=60
-heroku config:set NODE_ENV=production
-heroku config:set APP_URL=https://your-app-name.herokuapp.com
-heroku config:set ADMIN_USERS='[123456789]'
-```
-
-3. Deploy to Heroku:
-```bash
-git push heroku main
-```
-
-4. Ensure the worker dyno is running:
-```bash
-heroku ps:scale worker=1
-```
+4. Deploy! Railway will automatically build and deploy your bot
 
 ## Configuration
 
 You can configure the bot using either:
 
-1. Environment variables (recommended for Heroku)
+1. Environment variables (recommended for Railway)
 2. config.json file (local development)
 
 ### Environment Variables
@@ -121,7 +100,6 @@ FILTER_TYPES=["text","photo","video","document"]
 RATE_LIMIT_MAX=10
 RATE_LIMIT_WINDOW=60
 NODE_ENV=production
-APP_URL=https://your-app-name.herokuapp.com
 ADMIN_USERS=[123456789]
 ```
 
@@ -143,14 +121,6 @@ ADMIN_USERS=[123456789]
   "admins": [123456789]
 }
 ```
-
-## Usage
-
-1. Add your bot to both source and destination chats
-2. Grant admin rights to the bot in destination chats
-3. Use admin commands to configure sources, destinations, and filters
-4. Deploy to Heroku or start locally
-5. Monitor the logs using `heroku logs --tail` or check the local bot.log file
 
 ## Bot Cloning Tips
 
