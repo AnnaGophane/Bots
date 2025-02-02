@@ -1,0 +1,13 @@
+{
+  "botToken": "YOUR_BOT_TOKEN",
+  "sourceChats": [-100123456789],
+  "destinationChats": [-100987654321],
+  "filters": {
+    "keywords": ["important", "announcement"],
+    "types": ["text", "photo", "video", "document"]
+  },
+  "rateLimit": {
+    "maxMessages": 10,
+    "timeWindow": 60
+  }
+}
