@@ -3,10 +3,10 @@ builder = "NIXPACKS"
 buildCommand = "npm install"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "node src/index.js"
 healthcheckPath = "/"
 healthcheckTimeout = 100
-restartPolicy = "ON_FAILURE"  # Valid values: ON_FAILURE, ALWAYS, or NEVER
+restartPolicy = "ON_FAILURE"
 numReplicas = 1
 
 [service]
