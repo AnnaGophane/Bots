@@ -1,11 +1,14 @@
 [build]
-builder = "nixpacks"
+builder = "NIXPACKS"
 buildCommand = "npm install"
 
 [deploy]
 startCommand = "npm start"
 healthcheckPath = "/"
-restartPolicyType = "on-failure"
+healthcheckTimeout = 100
+restartPolicy = "ON_FAILURE"  # Valid values: ON_FAILURE, ALWAYS, or NEVER
+numReplicas = 1
 
-[env]
-NODE_ENV = "production"
+[service]
+name = "bots-app"
+
