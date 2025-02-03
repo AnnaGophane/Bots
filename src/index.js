@@ -1,10 +1,10 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
-import dotenv from 'dotenv';
+import { config } from 'dotenv';
 import { readFileSync, writeFileSync } from 'fs';
 
 // Load environment variables
-dotenv.config();
+config();
 
 // Initialize configuration
 let botConfig;
@@ -42,7 +42,13 @@ const logger = createLogger({
 
 // Initialize bot with polling and error handling
 const bot = new TelegramBot(botConfig.botToken, {
-  polling: true
+  polling: {
+    interval: 300,
+    autoStart: true,
+    params: {
+      timeout: 10
+    }
+  }
 });
 
 // Handle polling errors
@@ -102,11 +108,7 @@ I'm an Auto-Forward bot that can help you forward messages between chats without
 Note: Some commands require admin privileges.
 `;
 
-  try {
-    await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
-  } catch (error) {
-    logger.error('Error sending welcome message:', error.message);
-  }
+  await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
 });
 
 // Rate limiting
@@ -175,7 +177,13 @@ async function cloneBot(msg, newBotToken) {
     };
 
     const clonedBot = new TelegramBot(newBotToken, {
-      polling: true
+      polling: {
+        interval: 300,
+        autoStart: true,
+        params: {
+          timeout: 10
+        }
+      }
     });
 
     botConfig.clonedBots.set(newBotToken, {
@@ -209,14 +217,10 @@ async function cloneBot(msg, newBotToken) {
 // Set up event handlers for a bot instance
 function setupBotEventHandlers(botInstance, config) {
   botInstance.on('message', async (msg) => {
-    try {
-      if (msg.text?.startsWith('/')) {
-        await handleAdminCommands(msg, botInstance, config);
-      } else {
-        await forwardMessage(msg, botInstance, config);
-      }
-    } catch (error) {
-      logger.error('Error handling message:', error.message);
+    if (msg.text?.startsWith('/')) {
+      await handleAdminCommands(msg, botInstance, config);
+    } else {
+      await forwardMessage(msg, botInstance, config);
     }
   });
 
@@ -232,11 +236,7 @@ function setupBotEventHandlers(botInstance, config) {
 // Save configuration
 function saveConfig() {
   if (process.env.NODE_ENV !== 'production') {
-    try {
-      writeFileSync('./config.json', JSON.stringify(botConfig, null, 2));
-    } catch (error) {
-      logger.error('Error saving config:', error.message);
-    }
+    writeFileSync('./config.json', JSON.stringify(botConfig, null, 2));
   }
 }
 
