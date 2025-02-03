@@ -30,9 +30,12 @@ try {
 
 // Configure logger
 const logger = createLogger({
+  level: 'info',
   format: format.combine(
     format.timestamp(),
-    format.json()
+    format.printf(({ level, message, timestamp }) => {
+      return `${timestamp} ${level}: ${message}`;
+    })
   ),
   transports: [
     new transports.Console(),
@@ -49,25 +52,22 @@ const bot = new TelegramBot(botConfig.botToken, {
       timeout: 10
     },
     request: {
-      // Add timeout to requests
       timeout: 30000
     }
   }
 });
+
 // Handle polling errors
 bot.on('polling_error', (error) => {
-  // Don't crash on EFATAL errors
   if (error.code === 'EFATAL') {
-    logger.warn('Polling error (EFATAL), will retry:', error.message);
+    logger.warn(`Polling error (EFATAL), will retry: ${error.message}`);
     return;
   }
-// Handle general errors
-if (error.code === 'ETELEGRAM') {
-    logger.warn('Telegram API error:', error.message);
+  if (error.code === 'ETELEGRAM') {
+    logger.warn(`Telegram API error: ${error.message}`);
     return;
   }
-
-  logger.error('Polling error:', error.message);
+  logger.error(`Polling error: ${error.message}`);
 });
 
 // Add better error recovery
@@ -83,7 +83,7 @@ function startPolling() {
           pollingRetries = 0;
         })
         .catch(error => {
-          logger.error('Error starting polling:', error.message);
+          logger.error(`Error starting polling: ${error.message}`);
           pollingRetries++;
           
           if (pollingRetries < maxPollingRetries) {
@@ -91,12 +91,12 @@ function startPolling() {
             setTimeout(startPolling, 10000);
           } else {
             logger.error('Max polling retries reached, stopping bot');
-            process.exit(1); // Let Railway restart the container
+            process.exit(1);
           }
         });
     }
   } catch (error) {
-    logger.error('Error in startPolling:', error.message);
+    logger.error(`Error in startPolling: ${error.message}`);
   }
 }
 
@@ -109,7 +109,7 @@ process.on('SIGTERM', () => {
       process.exit(0);
     })
     .catch(error => {
-      logger.error('Error stopping polling:', error.message);
+      logger.error(`Error stopping polling: ${error.message}`);
       process.exit(1);
     });
 });
@@ -122,14 +122,14 @@ process.on('SIGINT', () => {
       process.exit(0);
     })
     .catch(error => {
-      logger.error('Error stopping polling:', error.message);
+      logger.error(`Error stopping polling: ${error.message}`);
       process.exit(1);
     });
 });
 
 // Add error handling for unhandled rejections
 process.on('unhandledRejection', (error) => {
-  logger.error('Unhandled rejection:', error.message);
+  logger.error(`Unhandled rejection: ${error.message}`);
 });
 
 // Start the bot
@@ -152,7 +152,7 @@ async function setupBotCommands() {
     ]);
     logger.info('Bot commands set up successfully');
   } catch (error) {
-    logger.error('Error setting up bot commands:', error.message);
+    logger.error(`Error setting up bot commands: ${error.message}`);
   }
 }
 
@@ -182,7 +182,15 @@ I'm an Auto-Forward bot that can help you forward messages between chats without
 Note: Some commands require admin privileges.
 `;
 
-  await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+  try {
+    await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+    logger.info(`Welcome message sent to ${chatId}`);
+  } catch (error) {
+    logger.error(`Error sending welcome message to ${chatId}: ${error.message}`);
+    if (error.response) {
+      logger.error(`Telegram API response: ${JSON.stringify(error.response.body)}`);
+    }
+  }
 });
 
 // Rate limiting
@@ -291,10 +299,17 @@ async function cloneBot(msg, newBotToken) {
 // Set up event handlers for a bot instance
 function setupBotEventHandlers(botInstance, config) {
   botInstance.on('message', async (msg) => {
-    if (msg.text?.startsWith('/')) {
-      await handleAdminCommands(msg, botInstance, config);
-    } else {
-      await forwardMessage(msg, botInstance, config);
+    try {
+      if (msg.text?.startsWith('/')) {
+        await handleAdminCommands(msg, botInstance, config);
+      } else {
+        await forwardMessage(msg, botInstance, config);
+      }
+    } catch (error) {
+      logger.error(`Error handling message: ${error.message}`);
+      if (error.response) {
+        logger.error(`Telegram API response: ${JSON.stringify(error.response.body)}`);
+      }
     }
   });
 
@@ -310,7 +325,11 @@ function setupBotEventHandlers(botInstance, config) {
 // Save configuration
 function saveConfig() {
   if (process.env.NODE_ENV !== 'production') {
-    writeFileSync('./config.json', JSON.stringify(botConfig, null, 2));
+    try {
+      writeFileSync('./config.json', JSON.stringify(botConfig, null, 2));
+    } catch (error) {
+      logger.error(`Error saving config: ${error.message}`);
+    }
   }
 }
 
@@ -596,11 +615,7 @@ setupBotEventHandlers(bot, botConfig);
 
 // Set up bot commands when starting
 setupBotCommands().catch(error => {
-  logger.error('Failed to set up bot commands:', error.message);
-});
-
-process.on('unhandledRejection', (error) => {
-  logger.error('Unhandled rejection:', error.message);
+  logger.error(`Failed to set up bot commands: ${error.message}`);
 });
 
 logger.info('Bot started successfully');
