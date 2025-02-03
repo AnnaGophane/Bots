@@ -1,9 +1,11 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install"
+buildCommand = "npm ci --only=production"
 
 [deploy]
 startCommand = "npm start"
+healthcheckPath = "/"
+healthcheckTimeout = 100
 
-[env]
+[environment]
 NODE_ENV = "production"
