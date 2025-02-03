@@ -40,18 +40,10 @@ const logger = createLogger({
   ]
 });
 
-// Initialize bot
+// Initialize bot with polling in production
 const bot = new TelegramBot(botConfig.botToken, {
-  webHook: process.env.NODE_ENV === 'production'
+  polling: true // Always use polling instead of webhooks
 });
-
-// Set webhook in production
-if (process.env.NODE_ENV === 'production') {
-  const url = process.env.APP_URL;
-  bot.setWebHook(`${url}/bot${botConfig.botToken}`);
-} else {
-  bot.startPolling();
-}
 
 // Set up bot commands when starting
 async function setupBotCommands() {
@@ -169,15 +161,8 @@ async function cloneBot(msg, newBotToken) {
     };
 
     const clonedBot = new TelegramBot(newBotToken, {
-      webHook: process.env.NODE_ENV === 'production'
+      polling: true
     });
-
-    if (process.env.NODE_ENV === 'production') {
-      const url = process.env.APP_URL;
-      await clonedBot.setWebHook(`${url}/bot${newBotToken}`);
-    } else {
-      clonedBot.startPolling();
-    }
 
     botConfig.clonedBots.set(newBotToken, {
       bot: clonedBot,
