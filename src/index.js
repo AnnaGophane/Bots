@@ -42,13 +42,7 @@ const logger = createLogger({
 
 // Initialize bot with polling and error handling
 const bot = new TelegramBot(botConfig.botToken, {
-  polling: {
-    interval: 300,
-    autoStart: true,
-    params: {
-      timeout: 10
-    }
-  }
+  polling: true
 });
 
 // Handle polling errors
@@ -181,13 +175,7 @@ async function cloneBot(msg, newBotToken) {
     };
 
     const clonedBot = new TelegramBot(newBotToken, {
-      polling: {
-        interval: 300,
-        autoStart: true,
-        params: {
-          timeout: 10
-        }
-      }
+      polling: true
     });
 
     botConfig.clonedBots.set(newBotToken, {
