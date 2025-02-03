@@ -6,68 +6,104 @@ import { readFileSync, writeFileSync } from 'fs';
 // Load environment variables
 config();
 
-// Initialize configuration
+// Validate bot token
+const BOT_TOKEN = process.env.BOT_TOKEN;
+if (!BOT_TOKEN) {
+  throw new Error('BOT_TOKEN environment variable is not set');
+}
+
+// Initialize configuration with better error handling
 let botConfig;
 try {
   botConfig = JSON.parse(readFileSync('./config.json', 'utf8'));
+  logger.info('Loaded configuration from config.json');
 } catch (error) {
+  logger.info('Creating new configuration from environment variables');
   botConfig = {
-    botToken: process.env.BOT_TOKEN,
-    sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
-    destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
+    botToken: BOT_TOKEN,
+    sourceChats: process.env.SOURCE_CHATS ? JSON.parse(process.env.SOURCE_CHATS) : [],
+    destinationChats: process.env.DESTINATION_CHATS ? JSON.parse(process.env.DESTINATION_CHATS) : [],
     filters: {
-      keywords: JSON.parse(process.env.FILTER_KEYWORDS || '[]'),
-      types: JSON.parse(process.env.FILTER_TYPES || '["text","photo","video","document"]')
+      keywords: process.env.FILTER_KEYWORDS ? JSON.parse(process.env.FILTER_KEYWORDS) : [],
+      types: process.env.FILTER_TYPES ? JSON.parse(process.env.FILTER_TYPES) : ["text","photo","video","document"]
     },
     rateLimit: {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
     },
-    admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
+    admins: process.env.ADMIN_USERS ? JSON.parse(process.env.ADMIN_USERS) : [],
     clonedBots: new Map()
   };
 }
 
-// Configure logger
+// Configure logger before using it
 const logger = createLogger({
-  level: 'info',
+  level: process.env.LOG_LEVEL || 'info',
   format: format.combine(
     format.timestamp(),
-    format.printf(({ level, message, timestamp }) => {
-      return `${timestamp} ${level}: ${message}`;
-    })
+    format.json()
   ),
   transports: [
-    new transports.Console(),
-    new transports.File({ filename: 'bot.log' })
+    new transports.Console({
+      format: format.combine(
+        format.colorize(),
+        format.simple()
+      )
+    }),
+    new transports.File({ 
+      filename: 'error.log', 
+      level: 'error',
+      maxsize: 5242880, // 5MB
+      maxFiles: 5
+    }),
+    new transports.File({ 
+      filename: 'combined.log',
+      maxsize: 5242880, // 5MB
+      maxFiles: 5
+    })
   ]
 });
 
-// Initialize bot with polling and error handling
+// Initialize bot with better error handling and timeouts
 const bot = new TelegramBot(botConfig.botToken, {
   polling: {
     interval: 300,
-    autoStart: true,
+    autoStart: false, // We'll start manually
     params: {
       timeout: 10
-    },
-    request: {
-      timeout: 30000
     }
+  },
+  request: {
+    timeout: 30000,
+    retry: 3
   }
 });
 
-// Handle polling errors
+// Enhanced polling error handler
 bot.on('polling_error', (error) => {
   if (error.code === 'EFATAL') {
-    logger.warn(`Polling error (EFATAL), will retry: ${error.message}`);
+    logger.warn('Fatal polling error, attempting restart...', {
+      error: error.message,
+      code: error.code
+    });
+    setTimeout(startPolling, 5000);
     return;
   }
+  
   if (error.code === 'ETELEGRAM') {
-    logger.warn(`Telegram API error: ${error.message}`);
+    logger.warn('Telegram API error', {
+      error: error.message,
+      code: error.code,
+      response: error.response?.body
+    });
     return;
   }
-  logger.error(`Polling error: ${error.message}`);
+  
+  logger.error('Unhandled polling error', {
+    error: error.message,
+    code: error.code,
+    stack: error.stack
+  });
 });
 
 // Add better error recovery
@@ -131,30 +167,6 @@ process.on('SIGINT', () => {
 process.on('unhandledRejection', (error) => {
   logger.error(`Unhandled rejection: ${error.message}`);
 });
-
-// Start the bot
-startPolling();
-
-// Set up bot commands when starting
-async function setupBotCommands() {
-  try {
-    await bot.setMyCommands([
-      { command: 'start', description: 'Start the bot and get help' },
-      { command: 'add_source', description: 'Add a source chat (Format: /add_source -100123456789)' },
-      { command: 'add_destinations', description: 'Add multiple destination chats (Format: /add_destinations -100123456789 -100987654321)' },
-      { command: 'list_sources', description: 'List all source chats' },
-      { command: 'list_destinations', description: 'List all destination chats' },
-      { command: 'remove_source', description: 'Remove a source chat (Format: /remove_source -100123456789)' },
-      { command: 'remove_destination', description: 'Remove a destination chat (Format: /remove_destination -100123456789)' },
-      { command: 'clone', description: 'Clone this bot with a new token (Admin only)' },
-      { command: 'status', description: 'Show bot status' },
-      { command: 'help', description: 'Show help message' }
-    ]);
-    logger.info('Bot commands set up successfully');
-  } catch (error) {
-    logger.error(`Error setting up bot commands: ${error.message}`);
-  }
-}
 
 // Welcome message handler
 bot.onText(/\/start/, async (msg) => {
@@ -368,7 +380,6 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     }
   }
 
-  // New command to add multiple destinations at once
   else if (text.startsWith('/add_destinations')) {
     const destIds = text.split(' ').slice(1).map(id => parseInt(id));
     if (destIds.length === 0) {
@@ -614,8 +625,55 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
 setupBotEventHandlers(bot, botConfig);
 
 // Set up bot commands when starting
-setupBotCommands().catch(error => {
-  logger.error(`Failed to set up bot commands: ${error.message}`);
-});
+async function setupBotCommands() {
+  try {
+    await bot.setMyCommands([
+      { command: 'start', description: 'Start the bot and get help' },
+      { command: 'add_source', description: 'Add a source chat (Format: /add_source -100123456789)' },
+      { command: 'add_destinations', description: 'Add multiple destination chats (Format: /add_destinations -100123456789 -100987654321)' },
+      { command: 'list_sources', description: 'List all source chats' },
+      { command: 'list_destinations', description: 'List all destination chats' },
+      { command: 'remove_source', description: 'Remove a source chat (Format: /remove_source -100123456789)' },
+      { command: 'remove_destination', description: 'Remove a destination chat (Format: /remove_destination -100123456789)' },
+      { command: 'clone', description: 'Clone this bot with a new token (Admin only)' },
+      { command: 'status', description: 'Show bot status' },
+      { command: 'help', description: 'Show help message' }
+    ]);
+    logger.info('Bot commands set up successfully');
+  } catch (error) {
+    logger.error(`Error setting up bot commands: ${error.message}`);
+  }
+}
 
-logger.info('Bot started successfully');
+// Modified startup sequence
+async function startBot() {
+  try {
+    logger.info('Starting bot...');
+    
+    // Validate bot token format
+    if (!/^\d+:[A-Za-z0-9_-]{35}$/.test(botConfig.botToken)) {
+      throw new Error('Invalid bot token format');
+    }
+    
+    // Test bot token by getting bot info
+    const botInfo = await bot.getMe();
+    logger.info(`Bot authorized as @${botInfo.username}`);
+    
+    // Start polling with error handling
+    await startPolling();
+    
+    // Set up commands
+    await setupBotCommands();
+    
+    logger.info('Bot startup completed successfully');
+  } catch (error) {
+    logger.error('Failed to start bot', {
+      error: error.message,
+      stack: error.stack
+    });
+    process.exit(1);
+  }
+}
+
+// Start the bot
+startBot();
