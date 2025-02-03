@@ -8,7 +8,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "lint": "eslint src/",
-    "test": "node --test"
+    "test": "node --experimental-test-runner test/"
   },
   "keywords": [
     "telegram",
@@ -16,7 +16,7 @@
     "auto-forward",
     "messaging"
   ],
-  "author": "",
+  "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "node-telegram-bot-api": "^0.64.0",
