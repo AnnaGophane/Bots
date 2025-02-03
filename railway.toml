@@ -4,7 +4,6 @@ buildCommand = "npm install"
 
 [deploy]
 startCommand = "npm start"
-healthcheckEnabled = false
 
 [env]
 NODE_ENV = "production"
