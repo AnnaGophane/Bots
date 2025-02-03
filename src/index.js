@@ -40,9 +40,25 @@ const logger = createLogger({
   ]
 });
 
-// Initialize bot with polling in production
+// Initialize bot with polling and error handling
 const bot = new TelegramBot(botConfig.botToken, {
-  polling: true // Always use polling instead of webhooks
+  polling: {
+    interval: 300,
+    autoStart: true,
+    params: {
+      timeout: 10
+    }
+  }
+});
+
+// Handle polling errors
+bot.on('polling_error', (error) => {
+  logger.error('Polling error:', error.message);
+});
+
+// Handle general errors
+bot.on('error', (error) => {
+  logger.error('Bot error:', error.message);
 });
 
 // Set up bot commands when starting
@@ -62,7 +78,7 @@ async function setupBotCommands() {
     ]);
     logger.info('Bot commands set up successfully');
   } catch (error) {
-    logger.error('Error setting up bot commands:', error);
+    logger.error('Error setting up bot commands:', error.message);
   }
 }
 
@@ -135,7 +151,7 @@ function matchesFilters(msg) {
   return true;
 }
 
-// Clone bot functionality
+// Clone bot functionality with proper error handling
 async function cloneBot(msg, newBotToken) {
   try {
     if (!botConfig.admins.includes(msg.from.id)) {
@@ -161,7 +177,13 @@ async function cloneBot(msg, newBotToken) {
     };
 
     const clonedBot = new TelegramBot(newBotToken, {
-      polling: true
+      polling: {
+        interval: 300,
+        autoStart: true,
+        params: {
+          timeout: 10
+        }
+      }
     });
 
     botConfig.clonedBots.set(newBotToken, {
@@ -499,6 +521,12 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
 setupBotEventHandlers(bot, botConfig);
 
 // Set up bot commands when starting
-setupBotCommands();
+setupBotCommands().catch(error => {
+  logger.error('Failed to set up bot commands:', error.message);
+});
+
+process.on('unhandledRejection', (error) => {
+  logger.error('Unhandled rejection:', error.message);
+});
 
 logger.info('Bot started successfully');
