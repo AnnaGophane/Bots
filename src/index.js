@@ -1,10 +1,10 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
-import { config } from 'dotenv';
+import dotenv from 'dotenv';
 import { readFileSync, writeFileSync } from 'fs';
 
 // Load environment variables
-config();
+dotenv.config();
 
 // Initialize configuration
 let botConfig;
@@ -108,7 +108,11 @@ I'm an Auto-Forward bot that can help you forward messages between chats without
 Note: Some commands require admin privileges.
 `;
 
-  await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+  try {
+    await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+  } catch (error) {
+    logger.error('Error sending welcome message:', error.message);
+  }
 });
 
 // Rate limiting
@@ -217,10 +221,14 @@ async function cloneBot(msg, newBotToken) {
 // Set up event handlers for a bot instance
 function setupBotEventHandlers(botInstance, config) {
   botInstance.on('message', async (msg) => {
-    if (msg.text?.startsWith('/')) {
-      await handleAdminCommands(msg, botInstance, config);
-    } else {
-      await forwardMessage(msg, botInstance, config);
+    try {
+      if (msg.text?.startsWith('/')) {
+        await handleAdminCommands(msg, botInstance, config);
+      } else {
+        await forwardMessage(msg, botInstance, config);
+      }
+    } catch (error) {
+      logger.error('Error handling message:', error.message);
     }
   });
 
@@ -236,7 +244,11 @@ function setupBotEventHandlers(botInstance, config) {
 // Save configuration
 function saveConfig() {
   if (process.env.NODE_ENV !== 'production') {
-    writeFileSync('./config.json', JSON.stringify(botConfig, null, 2));
+    try {
+      writeFileSync('./config.json', JSON.stringify(botConfig, null, 2));
+    } catch (error) {
+      logger.error('Error saving config:', error.message);
+    }
   }
 }
 
