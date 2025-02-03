@@ -47,19 +47,93 @@ const bot = new TelegramBot(botConfig.botToken, {
     autoStart: true,
     params: {
       timeout: 10
+    },
+    request: {
+      // Add timeout to requests
+      timeout: 30000
     }
   }
 });
-
 // Handle polling errors
 bot.on('polling_error', (error) => {
+  // Don't crash on EFATAL errors
+  if (error.code === 'EFATAL') {
+    logger.warn('Polling error (EFATAL), will retry:', error.message);
+    return;
+  }
+// Handle general errors
+if (error.code === 'ETELEGRAM') {
+    logger.warn('Telegram API error:', error.message);
+    return;
+  }
+
   logger.error('Polling error:', error.message);
 });
 
-// Handle general errors
-bot.on('error', (error) => {
-  logger.error('Bot error:', error.message);
+// Add better error recovery
+let pollingRetries = 0;
+const maxPollingRetries = 5;
+
+function startPolling() {
+  try {
+    if (!bot.isPolling()) {
+      bot.startPolling({ restart: true })
+        .then(() => {
+          logger.info('Polling started successfully');
+          pollingRetries = 0;
+        })
+        .catch(error => {
+          logger.error('Error starting polling:', error.message);
+          pollingRetries++;
+          
+          if (pollingRetries < maxPollingRetries) {
+            logger.info(`Retrying polling in 10 seconds... (Attempt ${pollingRetries}/${maxPollingRetries})`);
+            setTimeout(startPolling, 10000);
+          } else {
+            logger.error('Max polling retries reached, stopping bot');
+            process.exit(1); // Let Railway restart the container
+          }
+        });
+    }
+  } catch (error) {
+    logger.error('Error in startPolling:', error.message);
+  }
+}
+
+// Handle process termination gracefully
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, stopping bot...');
+  bot.stopPolling()
+    .then(() => {
+      logger.info('Polling stopped');
+      process.exit(0);
+    })
+    .catch(error => {
+      logger.error('Error stopping polling:', error.message);
+      process.exit(1);
+    });
 });
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, stopping bot...');
+  bot.stopPolling()
+    .then(() => {
+      logger.info('Polling stopped');
+      process.exit(0);
+    })
+    .catch(error => {
+      logger.error('Error stopping polling:', error.message);
+      process.exit(1);
+    });
+});
+
+// Add error handling for unhandled rejections
+process.on('unhandledRejection', (error) => {
+  logger.error('Unhandled rejection:', error.message);
+});
+
+// Start the bot
+startPolling();
 
 // Set up bot commands when starting
 async function setupBotCommands() {
