@@ -1,33 +1,22 @@
 {
   "name": "telegram-auto-forward-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for auto-forwarding messages between chats",
+  "description": "Telegram Auto Forward Bot",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "NODE_ENV=production node src/index.js",
-    "dev": "nodemon src/index.js",
-    "lint": "eslint src/",
-    "test": "node --experimental-test-runner test/"
-  },
-  "keywords": [
-    "telegram",
-    "bot",
-    "auto-forward",
-    "messaging"
-  ],
-  "author": "AnnaGophane",
-  "license": "MIT",
-  "dependencies": {
-    "node-telegram-bot-api": "^0.64.0",
-    "winston": "^3.11.0",
-    "dotenv": "^16.4.1"
-  },
-  "devDependencies": {
-    "eslint": "^8.57.0",
-    "nodemon": "^3.1.0"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "node-telegram-bot-api": "^0.64.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   }
 }
