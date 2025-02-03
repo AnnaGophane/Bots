@@ -1,13 +1,11 @@
 [build]
-builder = "NIXPACKS"
+builder = "nixpacks"
 buildCommand = "npm install"
 
 [deploy]
 startCommand = "npm start"
-restartPolicy = "ON_FAILURE"
-healthcheckPath = "/"
-healthcheckTimeout = 100
+restartPolicyType = "on-failure"
+healthcheckEnabled = false
 
-[service]
-name = "discord-bot"
-
+[env]
+NODE_ENV = "production"
