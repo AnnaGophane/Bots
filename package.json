@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "NODE_ENV=production node src/index.js",
     "dev": "nodemon src/index.js",
     "lint": "eslint src/",
     "test": "node --experimental-test-runner test/"
@@ -16,7 +16,7 @@
     "auto-forward",
     "messaging"
   ],
-  "author": "Your Name",
+  "author": "AnnaGophane",
   "license": "MIT",
   "dependencies": {
     "node-telegram-bot-api": "^0.64.0",
