@@ -781,8 +781,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       const adminCommands = isAdmin ? `*Admin Commands:*\n` +
         `• /clone [token] \\- Create your own bot\n` +
         `• /broadcast [message] \\- Send message to all users\n` +
-        `• /add\\_sources [chat\\_id1] [chat\\_id2]  ```js
-        `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
+        `• /add\\_sources [chat\\_id1] [chat _id2] \\- Add source chats\n` +
         `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
         `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
         `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
