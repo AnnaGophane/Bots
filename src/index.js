@@ -19,78 +19,51 @@ const logger = createLogger({
 config();
 
 // Validate bot token with proper error message
-if (!process.env.BOT_TOKEN || process.env.BOT_TOKEN === 'your_bot_token_here' || process.env.BOT_TOKEN === '') {
-  logger.error('Valid BOT_TOKEN environment variable is required. Please set it in your .env file.');
+if (!process.env.BOT_TOKEN) {
+  logger.error('BOT_TOKEN environment variable is required. Please set it in your .env file.');
   process.exit(1);
 }
 
-// Helper function to safely parse JSON with fallback
-function safeJSONParse(str, fallback) {
-  if (!str) return fallback;
-  try {
-    return JSON.parse(str);
-  } catch (e) {
-    logger.error(`JSON parsing error for ${str}: ${e.message}`);
-    return fallback;
-  }
+// Helper function to validate bot token format
+function isValidBotToken(token) {
+  // Updated regex to be more flexible while maintaining security
+  return /^\d+:[A-Za-z0-9_-]{30,}$/.test(token);
 }
 
-// Initialize configuration with proper validation
+// Initialize configuration
 let botConfig;
 try {
   botConfig = JSON.parse(readFileSync('./config.json', 'utf8'));
-  
-  if (!botConfig.botToken) {
-    throw new Error('Bot token not found in config');
-  }
 } catch (error) {
   logger.info('Creating new configuration from environment variables');
-  
-  // Default values for arrays
-  const defaultTypes = ["text", "photo", "video", "document"];
-  const defaultKeywords = ["important", "announcement", "news", "update"];
-  
-  // Parse environment variables with validation
-  const sourceChats = safeJSONParse(process.env.SOURCE_CHATS, []);
-  const destinationChats = safeJSONParse(process.env.DESTINATION_CHATS, []);
-  const keywords = safeJSONParse(process.env.FILTER_KEYWORDS, defaultKeywords);
-  const types = safeJSONParse(process.env.FILTER_TYPES, defaultTypes);
-  const adminUsers = safeJSONParse(process.env.ADMIN_USERS, []);
-  
-  // Validate arrays
-  if (!Array.isArray(sourceChats) || !Array.isArray(destinationChats) || 
-      !Array.isArray(keywords) || !Array.isArray(types) || !Array.isArray(adminUsers)) {
-    logger.error('Invalid configuration: Arrays expected for SOURCE_CHATS, DESTINATION_CHATS, FILTER_KEYWORDS, FILTER_TYPES, and ADMIN_USERS');
-    process.exit(1);
-  }
-  
   botConfig = {
-    botToken: process.env.BOT_TOKEN.trim(),
-    sourceChats,
-    destinationChats,
+    botToken: process.env.BOT_TOKEN,
+    sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
+    destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
     filters: {
-      keywords,
-      types
+      keywords: JSON.parse(process.env.FILTER_KEYWORDS || '[]'),
+      types: JSON.parse(process.env.FILTER_TYPES || '["text","photo","video","document"]')
     },
     rateLimit: {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
     },
-    admins: adminUsers,
+    admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
     clonedBots: new Map(),
-    logChannel: process.env.LOG_CHANNEL ? process.env.LOG_CHANNEL.trim() : ''
+    logChannel: process.env.LOG_CHANNEL || ''
   };
 }
 
 // Initialize bot with improved error handling
 let bot;
 try {
-  // Verify bot token format
-  if (!/^\d+:[A-Za-z0-9_-]{35}$/.test(botConfig.botToken)) {
-    throw new Error('Invalid bot token format. Please check your token.');
+  const token = process.env.BOT_TOKEN.trim();
+  
+  if (!isValidBotToken(token)) {
+    throw new Error('Invalid bot token format. Please check your token from @BotFather');
   }
   
-  bot = new TelegramBot(botConfig.botToken, {
+  bot = new TelegramBot(token, {
     polling: {
       interval: 1000,
       autoStart: true,
@@ -100,9 +73,9 @@ try {
       }
     },
     request: {
-      timeout: 60000,
-      retry: 5,
-      connect_timeout: 30000
+      timeout: 30000,
+      retry: 3,
+      connect_timeout: 10000
     },
     webHook: false
   });
@@ -111,9 +84,14 @@ try {
   const me = await bot.getMe();
   logger.info(`Bot initialized successfully: @${me.username}`);
 } catch (error) {
-  logger.error('Failed to initialize bot:', error.message);
-  if (error.message.includes('404')) {
-    logger.error('Bot token is invalid. Please check your token and try again.');
+  if (error.message.includes('ETELEGRAM: 404')) {
+    logger.error('Invalid bot token. Please check your token from @BotFather');
+  } else if (error.message.includes('ETELEGRAM: 401')) {
+    logger.error('Unauthorized. The bot token is invalid or has been revoked.');
+  } else if (error.message.includes('Invalid bot token format')) {
+    logger.error(error.message);
+  } else {
+    logger.error('Failed to initialize bot:', error.message);
   }
   process.exit(1);
 }
