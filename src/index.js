@@ -24,6 +24,18 @@ if (!process.env.BOT_TOKEN) {
   process.exit(1);
 }
 
+// Helper function to safely parse JSON with fallback
+function safeJSONParse(str, fallback) {
+  if (!str) return fallback;
+  try {
+    const parsed = JSON.parse(str);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (e) {
+    logger.error(`JSON parsing error: ${e.message}`);
+    return fallback;
+  }
+}
+
 // Initialize configuration with proper array handling and validation
 let botConfig;
 try {
@@ -36,52 +48,16 @@ try {
 } catch (error) {
   logger.info('Creating new configuration from environment variables');
   
-  // Safely parse arrays with fallbacks
-  let sourceChats = [];
-  let destinationChats = [];
-  let keywords = [];
-  let types = ["text", "photo", "video", "document"];
-  let adminUsers = [];
+  // Default values for arrays
+  const defaultTypes = ["text", "photo", "video", "document"];
+  const defaultKeywords = ["important", "announcement", "news", "update"];
   
-  try {
-    if (process.env.SOURCE_CHATS) {
-      sourceChats = JSON.parse(process.env.SOURCE_CHATS);
-    }
-  } catch (e) {
-    logger.error('Invalid SOURCE_CHATS format:', e.message);
-  }
-  
-  try {
-    if (process.env.DESTINATION_CHATS) {
-      destinationChats = JSON.parse(process.env.DESTINATION_CHATS);
-    }
-  } catch (e) {
-    logger.error('Invalid DESTINATION_CHATS format:', e.message);
-  }
-  
-  try {
-    if (process.env.FILTER_KEYWORDS) {
-      keywords = JSON.parse(process.env.FILTER_KEYWORDS);
-    }
-  } catch (e) {
-    logger.error('Invalid FILTER_KEYWORDS format:', e.message);
-  }
-  
-  try {
-    if (process.env.FILTER_TYPES) {
-      types = JSON.parse(process.env.FILTER_TYPES);
-    }
-  } catch (e) {
-    logger.error('Invalid FILTER_TYPES format:', e.message);
-  }
-  
-  try {
-    if (process.env.ADMIN_USERS) {
-      adminUsers = JSON.parse(process.env.ADMIN_USERS);
-    }
-  } catch (e) {
-    logger.error('Invalid ADMIN_USERS format:', e.message);
-  }
+  // Parse environment variables with fallbacks
+  const sourceChats = safeJSONParse(process.env.SOURCE_CHATS, []);
+  const destinationChats = safeJSONParse(process.env.DESTINATION_CHATS, []);
+  const keywords = safeJSONParse(process.env.FILTER_KEYWORDS, defaultKeywords);
+  const types = safeJSONParse(process.env.FILTER_TYPES, defaultTypes);
+  const adminUsers = safeJSONParse(process.env.ADMIN_USERS, []);
   
   botConfig = {
     botToken: process.env.BOT_TOKEN.trim(),
@@ -95,7 +71,7 @@ try {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
     },
-    admins: Array.isArray(adminUsers) ? adminUsers : [],
+    admins: adminUsers,
     clonedBots: new Map(),
     logChannel: process.env.LOG_CHANNEL ? process.env.LOG_CHANNEL.trim() : ''
   };
