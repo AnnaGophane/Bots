@@ -66,11 +66,12 @@ try {
   
   bot = new TelegramBot(token, {
     polling: {
-      interval: 1000,
+      interval: 2000,
       autoStart: true,
       params: {
         timeout: 30,
-        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
+        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post'],
+        offset: -1
       }
     },
     request: {
@@ -745,7 +746,7 @@ async function cleanForwardMessage(msg, botInstance, destChat) {
         is_anonymous: msg.poll.is_anonymous,
         type: msg.poll.type,
         allows_multiple_answers: msg.poll.allows_multiple_answers,
-        correct_option_id: msg.poll.correct_ option_id
+        correct _option_id: msg.poll.correct_option_id
       });
     }
     else if (msg.animation) {
