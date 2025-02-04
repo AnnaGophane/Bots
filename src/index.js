@@ -35,21 +35,61 @@ try {
   }
 } catch (error) {
   logger.info('Creating new configuration from environment variables');
-  const adminUsers = process.env.ADMIN_USERS ? JSON.parse(process.env.ADMIN_USERS) : [];
   
-  // Ensure bot token is available
-  if (!process.env.BOT_TOKEN) {
-    logger.error('BOT_TOKEN environment variable is required');
-    process.exit(1);
+  // Safely parse arrays with fallbacks
+  let sourceChats = [];
+  let destinationChats = [];
+  let keywords = [];
+  let types = ["text", "photo", "video", "document"];
+  let adminUsers = [];
+  
+  try {
+    if (process.env.SOURCE_CHATS) {
+      sourceChats = JSON.parse(process.env.SOURCE_CHATS);
+    }
+  } catch (e) {
+    logger.error('Invalid SOURCE_CHATS format:', e.message);
+  }
+  
+  try {
+    if (process.env.DESTINATION_CHATS) {
+      destinationChats = JSON.parse(process.env.DESTINATION_CHATS);
+    }
+  } catch (e) {
+    logger.error('Invalid DESTINATION_CHATS format:', e.message);
+  }
+  
+  try {
+    if (process.env.FILTER_KEYWORDS) {
+      keywords = JSON.parse(process.env.FILTER_KEYWORDS);
+    }
+  } catch (e) {
+    logger.error('Invalid FILTER_KEYWORDS format:', e.message);
+  }
+  
+  try {
+    if (process.env.FILTER_TYPES) {
+      types = JSON.parse(process.env.FILTER_TYPES);
+    }
+  } catch (e) {
+    logger.error('Invalid FILTER_TYPES format:', e.message);
+  }
+  
+  try {
+    if (process.env.ADMIN_USERS) {
+      adminUsers = JSON.parse(process.env.ADMIN_USERS);
+    }
+  } catch (e) {
+    logger.error('Invalid ADMIN_USERS format:', e.message);
   }
   
   botConfig = {
     botToken: process.env.BOT_TOKEN.trim(),
-    sourceChats: process.env.SOURCE_CHATS ? JSON.parse(process.env.SOURCE_CHATS) : [],
-    destinationChats: process.env.DESTINATION_CHATS ? JSON.parse(process.env.DESTINATION_CHATS) : [],
+    sourceChats,
+    destinationChats,
     filters: {
-      keywords: process.env.FILTER_KEYWORDS ? JSON.parse(process.env.FILTER_KEYWORDS) : [],
-      types: process.env.FILTER_TYPES ? JSON.parse(process.env.FILTER_TYPES) : ["text","photo","video","document"]
+      keywords,
+      types
     },
     rateLimit: {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
