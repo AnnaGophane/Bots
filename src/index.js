@@ -18,12 +18,13 @@ const logger = createLogger({
 // Load environment variables
 config();
 
-// Initialize configuration
+// Initialize configuration with proper array handling
 let botConfig;
 try {
   botConfig = JSON.parse(readFileSync('./config.json', 'utf8'));
 } catch (error) {
   logger.info('Creating new configuration from environment variables');
+  const adminUsers = process.env.ADMIN_USERS ? JSON.parse(process.env.ADMIN_USERS) : [];
   botConfig = {
     botToken: process.env.BOT_TOKEN,
     sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
@@ -36,7 +37,7 @@ try {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
     },
-    admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
+    admins: Array.isArray(adminUsers) ? adminUsers : [],
     clonedBots: new Map(),
     logChannel: process.env.LOG_CHANNEL || ''
   };
@@ -450,33 +451,33 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   }
 
   else if (text === '/help') {
-    const helpText = `
-*Available Commands:*
-
-${isAdmin ? '*Admin Commands:*\n' : ''}${isAdmin ? `• /clone [token] - Create your own bot
+    const adminCommands = isAdmin ? `*Admin Commands:*
+• /clone [token] - Create your own bot
 • /broadcast [message] - Send message to all users
-• /add_sources [chat_id1] [chat_id2] ... - Add multiple source chats
-• /add_destinations [chat_id1] [chat_id2] ... - Add multiple destination chats
-• /remove_sources [chat_id1] [chat_id2] ... - Remove multiple source chats
-• /remove_destinations [chat_id1] [chat_id2] ... - Remove multiple destination chats
+• /add_sources [chat_id1] [chat_id2] - Add source chats
+• /add_destinations [chat_id1] [chat_id2] - Add destination chats
+• /remove_sources [chat_id1] [chat_id2] - Remove source chats
+• /remove_destinations [chat_id1] [chat_id2] - Remove destination chats
 • /clear_sources - Remove all source chats
-• /clear_destinations - Remove all destination chats\n` : ''}
-*General Commands:*
+• /clear_destinations - Remove all destination chats\n` : '';
+
+    const helpText = `*Available Commands:*
+
+${adminCommands}*General Commands:*
 • /list_sources - Show source chats
 • /list_destinations - Show destinations
 • /status - Show bot status
 • /help - Show this message
 
 *Examples:*
-• /clone 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-• /broadcast Hello everyone!
 • /add_sources -100123456789 -100987654321
-• /add_destinations -100123456789 -100987654321 -100555555555
-• /remove_sources -100123456789 -100987654321
+• /add_destinations -100123456789 -100987654321
+${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}`;
 
-${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}
-    `.trim();
-    await botInstance.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
+    await botInstance.sendMessage(chatId, helpText, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true 
+    });
   }
 
   else if (text === '/status') {
