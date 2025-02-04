@@ -746,9 +746,8 @@ async function cleanForwardMessage(msg, botInstance, destChat) {
         is_anonymous: msg.poll.is_anonymous,
         type: msg.poll.type,
         allows_multiple_answers: msg.poll.allows_multiple_answers,
-        correct _option_id: msg.poll.correct_option_id
-      });
-    }
+        correct_option_id: msg.poll.correct_option_id
+      }); }
     else if (msg.animation) {
       await botInstance.sendAnimation(destChat, msg.animation.file_id, {
         caption: msg.caption,
