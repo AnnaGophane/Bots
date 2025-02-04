@@ -57,7 +57,7 @@ try {
     admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
     clonedBots: new Map(),
     logChannel: process.env.LOG_CHANNEL || '',
-    forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]') // Add force subscribe channels
+    forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
   };
 }
 
@@ -191,12 +191,8 @@ const baseDelay = 2000;
 let isReconnecting = false;
 
 bot.on('polling_error', async (error) => {
-  // Ignore EFATAL errors as they are usually temporary
-  if (error.message.includes('EFATAL')) {
-    return;
-  }
+  if (error.message.includes('EFATAL')) return;
   
-  // Avoid multiple reconnection attempts
   if (isReconnecting) return;
   
   logger.error('Polling error:', error.message);
@@ -344,7 +340,7 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       admins: [msg.from.id],
       owner: msg.from.id,
       logChannel: botConfig.logChannel,
-      forceSubscribe: [...botConfig.forceSubscribe] // Copy force subscribe settings
+      forceSubscribe: [...botConfig.forceSubscribe]
     };
     
     // Set up event handlers for the cloned bot
@@ -812,10 +808,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     else if (text === '/list_destinations') {
       const destinations = config.destinationChats.length > 0
         ? config.destinationChats.map(id => `• ${id}`).join('\n')
-        : 'No destination ```javascript
         : 'No destination chats configured';
       await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { 
-        parse_mode: 'Markdown',
+         parse_mode: 'Markdown',
         disable_web_page_preview: true
       });
     }
@@ -1100,4 +1095,3 @@ process.on('SIGTERM', async () => {
 });
 
 logger.info('Bot started successfully with improved error handling');
-```
