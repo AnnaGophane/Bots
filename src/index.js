@@ -778,35 +778,33 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     }
 
     else if (text === '/help') {
-      const adminCommands = isAdmin ? `*Admin Commands:*\n` +
-        `• /clone [token] \\- Create your own bot\n` +
-        `• /broadcast [message] \\- Send message to all users\n` +
-        `• /add\\_sources [chat\\_id1] [chat\\_id2]  ```js
-        `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
-        `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
-        `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
-        `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
-        `• /clear\\_sources \\- Remove all source chats\n` +
-        `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
+  const adminCommands = isAdmin ? `*Admin Commands:*\n` +
+    `• /clone [token] \\- Create your own bot\n` +
+    `• /broadcast [message] \\- Send message to all users\n` +
+    `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
+    `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
+    `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
+    `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
+    `• /clear\\_sources \\- Remove all source chats\n` +
+    `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
 
-      const helpText = `*Available Commands:*\n\n` +
-        `${adminCommands}*General Commands:*\n` +
-        `• /list\\_sources \\- Show source chats\n` +
-        `• /list\\_destinations \\- Show destinations\n` +
-        `• /status \\- Show bot status\n` +
-        `• /help \\- Show this message\n\n` +
-        `*Examples:*\n` +
-        `• /add\\_sources \\-100123456789 \\-100987654321\n` +
-        `• /add\\_destinations \\-100123456789 \\-100987654321\n` +
-        `${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}`;
+  const helpText = `*Available Commands:*\n\n` +
+    `${adminCommands}*General Commands:*\n` +
+    `• /list\\_sources \\- Show source chats\n` +
+    `• /list\\_destinations \\- Show destinations\n` +
+    `• /status \\- Show bot status\n` +
+    `• /help \\- Show this message\n\n` +
+    `*Examples:*\n` +
+    `• /add\\_sources \\-100123456789 \\-100987654321\n` +
+    `• /add\\_destinations \\-100123456789 \\-100987654321\n` +
+    `${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}`;
 
-      await botInstance.sendMessage(chatId, helpText, { 
-        parse_mode: 'MarkdownV2',
-        disable_web_page_preview: true 
-      });
-    }
-
-    else if (text === '/status') {
+  await botInstance.sendMessage(chatId, helpText, { 
+    parse_mode: 'MarkdownV2',
+    disable_web_page_preview: true 
+  });
+}
+else if (text === '/status') {
       const status = 
         `*Bot Status:*\n` +
         `• Sources: ${config.sourceChats.length}\n` +
