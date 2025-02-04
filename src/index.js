@@ -37,7 +37,8 @@ try {
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
     },
     admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
-    clonedBots: new Map()
+    clonedBots: new Map(),
+    logChannel: process.env.LOG_CHANNEL || ''
   };
 }
 
@@ -67,14 +68,16 @@ async function setupBotCommands() {
   try {
     await bot.setMyCommands([
       { command: 'start', description: 'Start the bot and get help' },
-      { command: 'add_sources', description: 'Add multiple source chats (Format: /add_sources -100123456789 -100987654321)' },
-      { command: 'add_destinations', description: 'Add multiple destination chats (Format: /add_destinations -100123456789 -100987654321)' },
+      { command: 'clone', description: 'Clone this bot with your own token' },
+      { command: 'add_sources', description: 'Add multiple source chats' },
+      { command: 'add_destinations', description: 'Add multiple destination chats' },
       { command: 'list_sources', description: 'List all source chats' },
       { command: 'list_destinations', description: 'List all destination chats' },
-      { command: 'remove_sources', description: 'Remove multiple source chats (Format: /remove_sources -100123456789 -100987654321)' },
-      { command: 'remove_destinations', description: 'Remove multiple destination chats (Format: /remove_destinations -100123456789 -100987654321)' },
+      { command: 'remove_sources', description: 'Remove multiple source chats' },
+      { command: 'remove_destinations', description: 'Remove multiple destination chats' },
       { command: 'clear_sources', description: 'Remove all source chats' },
       { command: 'clear_destinations', description: 'Remove all destination chats' },
+      { command: 'broadcast', description: 'Send message to all users (Admin only)' },
       { command: 'status', description: 'Show bot status' },
       { command: 'help', description: 'Show help message' }
     ]);
@@ -95,6 +98,7 @@ Welcome ${username}! 🤖
 I'm an Auto-Forward bot that can help you forward messages between multiple chats without the forwarded tag.
 
 *Main Commands:*
+/clone - Create your own bot using your token
 /add_sources - Add multiple source chats
 /add_destinations - Add multiple destination chats
 /list_sources - List all source chats
@@ -120,6 +124,115 @@ Note: Some commands require admin privileges.
 `;
 
   await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+  
+  // Log to channel
+  if (botConfig.logChannel) {
+    await bot.sendMessage(botConfig.logChannel, 
+      `New user started the bot:\nID: ${msg.from.id}\nUsername: @${msg.from.username || 'N/A'}\nName: ${msg.from.first_name} ${msg.from.last_name || ''}`
+    );
+  }
+});
+
+// Clone bot command
+bot.onText(/\/clone (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const newToken = match[1];
+  
+  try {
+    // Validate token
+    const testBot = new TelegramBot(newToken, { polling: false });
+    const me = await testBot.getMe();
+    
+    // Create new bot instance
+    const clonedBot = new TelegramBot(newToken, { polling: true });
+    
+    // Create config for cloned bot
+    const clonedConfig = {
+      botToken: newToken,
+      sourceChats: [],
+      destinationChats: [],
+      filters: { ...botConfig.filters },
+      rateLimit: { ...botConfig.rateLimit },
+      admins: [msg.from.id],
+      owner: msg.from.id
+    };
+    
+    // Set up event handlers for cloned bot
+    setupBotEventHandlers(clonedBot, clonedConfig);
+    
+    // Store cloned bot info
+    botConfig.clonedBots.set(newToken, {
+      bot: clonedBot,
+      config: clonedConfig,
+      owner: msg.from.id,
+      username: me.username
+    });
+    
+    await bot.sendMessage(chatId, 
+      `✅ Bot cloned successfully!\n\nBot username: @${me.username}\n\nYou can now use all commands with your bot.`
+    );
+    
+    // Log to channel
+    if (botConfig.logChannel) {
+      await bot.sendMessage(botConfig.logChannel, 
+        `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
+      );
+    }
+  } catch (error) {
+    await bot.sendMessage(chatId, '❌ Invalid bot token. Please check your token and try again.');
+    logger.error('Clone error:', error.message);
+  }
+});
+
+// Broadcast command
+bot.onText(/\/broadcast (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  
+  // Check if user is admin
+  if (!botConfig.admins.includes(msg.from.id)) {
+    await bot.sendMessage(chatId, '⚠️ Only admins can use this command.');
+    return;
+  }
+  
+  const message = match[1];
+  const users = new Set();
+  
+  // Collect all unique users from source and destination chats
+  botConfig.sourceChats.forEach(id => users.add(id));
+  botConfig.destinationChats.forEach(id => users.add(id));
+  
+  // Add users from cloned bots
+  for (const [_, clonedBot] of botConfig.clonedBots) {
+    users.add(clonedBot.owner);
+  }
+  
+  let sent = 0;
+  let failed = 0;
+  
+  // Send broadcast
+  for (const userId of users) {
+    try {
+      await bot.sendMessage(userId, `📢 *Broadcast Message*\n\n${message}`, {
+        parse_mode: 'Markdown'
+      });
+      sent++;
+    } catch (error) {
+      failed++;
+      logger.error(`Broadcast failed for user ${userId}:`, error.message);
+    }
+  }
+  
+  await bot.sendMessage(chatId, 
+    `📢 Broadcast completed:\n✅ Sent: ${sent}\n❌ Failed: ${failed}`
+  );
+  
+  // Log to channel
+  if (botConfig.logChannel) {
+    await bot.sendMessage(botConfig.logChannel, 
+      `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+      `Message: ${message}\nSent: ${sent}\nFailed: ${failed}`
+    );
+  }
 });
 
 // Rate limiting
@@ -180,7 +293,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     const sourceIds = text.split(' ').slice(1).map(id => parseInt(id));
     if (sourceIds.length === 0) {
       await botInstance.sendMessage(chatId, 
-        '⚠️ Please provide at least one valid chat ID\n' +
+        'Please provide at least one valid chat ID\n' +
         'Format: /add_sources -100123456789 -100987654321 ...'
       );
       return;
@@ -208,13 +321,21 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     ].filter(Boolean).join('\n');
     
     await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+    
+    // Log to channel
+    if (config.logChannel) {
+      await botInstance.sendMessage(config.logChannel,
+        `Sources added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+        `Added: ${added}\nSkipped: ${skipped}`
+      );
+    }
   }
 
   else if (text.startsWith('/add_destinations')) {
     const destIds = text.split(' ').slice(1).map(id => parseInt(id));
     if (destIds.length === 0) {
       await botInstance.sendMessage(chatId, 
-        '⚠️ Please provide at least one valid chat ID\n' +
+        'Please provide at least one valid chat ID\n' +
         'Format: /add_destinations -100123456789 -100987654321 ...'
       );
       return;
@@ -242,88 +363,14 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     ].filter(Boolean).join('\n');
     
     await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
-  }
-
-  else if (text.startsWith('/remove_sources')) {
-    const sourceIds = text.split(' ').slice(1).map(id => parseInt(id));
-    if (sourceIds.length === 0) {
-      await botInstance.sendMessage(chatId, 
-        '⚠️ Please provide at least one valid chat ID\n' +
-        'Format: /remove_sources -100123456789 -100987654321 ...'
+    
+    // Log to channel
+    if (config.logChannel) {
+      await botInstance.sendMessage(config.logChannel,
+        `Destinations added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+        `Added: ${added}\nSkipped: ${skipped}`
       );
-      return;
     }
-
-    let removed = 0;
-    let notFound = 0;
-    
-    for (const sourceId of sourceIds) {
-      if (!sourceId) continue;
-      
-      if (config.sourceChats.includes(sourceId)) {
-        config.sourceChats = config.sourceChats.filter(id => id !== sourceId);
-        removed++;
-      } else {
-        notFound++;
-      }
-    }
-    
-    saveConfig();
-    
-    const message = [
-      removed > 0 ? `✅ Removed ${removed} source${removed > 1 ? 's' : ''}` : '',
-      notFound > 0 ? `⚠️ ${notFound} chat${notFound > 1 ? 's' : ''} not found in sources` : ''
-    ].filter(Boolean).join('\n');
-    
-    await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
-  }
-
-  else if (text.startsWith('/remove_destinations')) {
-    const destIds = text.split(' ').slice(1).map(id => parseInt(id));
-    if (destIds.length === 0) {
-      await botInstance.sendMessage(chatId, 
-        '⚠️ Please provide at least one valid chat ID\n' +
-        'Format: /remove_destinations -100123456789 -100987654321 ...'
-      );
-      return;
-    }
-
-    let removed = 0;
-    let notFound = 0;
-    
-    for (const destId of destIds) {
-      if (!destId) continue;
-      
-      if (config.destinationChats.includes(destId)) {
-        config.destinationChats = config.destinationChats.filter(id => id !== destId);
-        removed++;
-      } else {
-        notFound++;
-      }
-    }
-    
-    saveConfig();
-    
-    const message = [
-      removed > 0 ? `✅ Removed ${removed} destination${removed > 1 ? 's' : ''}` : '',
-      notFound > 0 ? `⚠️ ${notFound} chat${notFound > 1 ? 's' : ''} not found in destinations` : ''
-    ].filter(Boolean).join('\n');
-    
-    await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
-  }
-
-  else if (text === '/clear_sources') {
-    const count = config.sourceChats.length;
-    config.sourceChats = [];
-    saveConfig();
-    await botInstance.sendMessage(chatId, `✅ Cleared all ${count} source chat${count !== 1 ? 's' : ''}`);
-  }
-
-  else if (text === '/clear_destinations') {
-    const count = config.destinationChats.length;
-    config.destinationChats = [];
-    saveConfig();
-    await botInstance.sendMessage(chatId, `✅ Cleared all ${count} destination chat${count !== 1 ? 's' : ''}`);
   }
 
   else if (text === '/list_sources') {
@@ -340,11 +387,129 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { parse_mode: 'Markdown' });
   }
 
+  else if (text.startsWith('/remove_sources')) {
+    const sourceIds = text.split(' ').slice(1).map(id => parseInt(id));
+    if (sourceIds.length === 0) {
+      await botInstance.sendMessage(chatId, 
+        'Please provide source chat IDs to remove.\nFormat: /remove_sources chatId1 chatId2 ...'
+      );
+      return;
+    }
+
+    let removed = 0;
+    let notFound = 0;
+    let invalid = 0;
+    
+    for (const sourceId of sourceIds) {
+      if (isNaN(sourceId)) {
+        invalid++;
+      } else if (config.sourceChats.includes(sourceId)) {
+        config.sourceChats = config.sourceChats.filter(id => id !== sourceId);
+        removed++;
+      } else {
+        notFound++;
+      }
+    }
+    
+    saveConfig();
+    
+    const message = [
+      removed > 0 ? `✅ Removed ${removed} source${removed > 1 ? 's' : ''}` : '',
+      notFound > 0 ? `⚠️ Not found: ${notFound}` : '',
+      invalid > 0 ? `❌ Invalid IDs: ${invalid}` : ''
+    ].filter(Boolean).join('\n');
+    
+    await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+    
+    // Log to channel
+    if (config.logChannel) {
+      await botInstance.sendMessage(config.logChannel,
+        `Sources removed by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+        `Removed: ${removed}\nNot found: ${notFound}\nInvalid: ${invalid}`
+      );
+    }
+  }
+
+  else if (text.startsWith('/remove_destinations')) {
+    const destIds = text.split(' ').slice(1).map(id => parseInt(id));
+    if (destIds.length === 0) {
+      await botInstance.sendMessage(chatId, 
+        'Please provide destination chat IDs to remove.\nFormat: /remove_destinations chatId1 chatId2 ...'
+      );
+      return;
+    }
+
+    let removed = 0;
+    let notFound = 0;
+    let invalid = 0;
+    
+    for (const destId of destIds) {
+      if (isNaN(destId)) {
+        invalid++;
+      } else if (config.destinationChats.includes(destId)) {
+        config.destinationChats = config.destinationChats.filter(id => id !== destId);
+        removed++;
+      } else {
+        notFound++;
+      }
+    }
+    
+    saveConfig();
+    
+    const message = [
+      removed > 0 ? `✅ Removed ${removed} destination${removed > 1 ? 's' : ''}` : '',
+      notFound > 0 ? `⚠️ Not found: ${notFound}` : '',
+      invalid > 0 ? `❌ Invalid IDs: ${invalid}` : ''
+    ].filter(Boolean).join('\n');
+    
+    await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+    
+    // Log to channel
+    if (config.logChannel) {
+      await botInstance.sendMessage(config.logChannel,
+        `Destinations removed by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+        `Removed: ${removed}\nNot found: ${notFound}\nInvalid: ${invalid}`
+      );
+    }
+  }
+
+  else if (text === '/clear_sources') {
+    const count = config.sourceChats.length;
+    config.sourceChats = [];
+    saveConfig();
+    await botInstance.sendMessage(chatId, `✅ Cleared all ${count} source chat${count !== 1 ? 's' : ''}`);
+    
+    // Log to channel
+    if (config.logChannel) {
+      await botInstance.sendMessage(config.logChannel,
+        `All sources cleared by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
+        `Cleared: ${count} sources`
+      );
+    }
+  }
+
+  else if (text === '/clear_destinations') {
+    const count = config.destinationChats.length;
+    config.destinationChats = [];
+    saveConfig();
+    await botInstance.sendMessage(chatId, `✅ Cleared all ${count} destination chat${count !== 1 ? 's' : ''}`);
+    
+    // Log to channel
+    if (config.logChannel) {
+      await botInstance.sendMessage(config.logChannel,
+        `All destinations cleared by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
+        `Cleared: ${count} destinations`
+      );
+    }
+  }
+
   else if (text === '/help') {
     const helpText = `
 *Available Commands:*
 
-${isAdmin ? '*Admin Commands:*\n' : ''}${isAdmin ? `• /add_sources [chat_id1] [chat_id2] ... - Add multiple source chats
+${isAdmin ? '*Admin Commands:*\n' : ''}${isAdmin ? `• /clone [token] - Create your own bot
+• /broadcast [message] - Send message to all users
+• /add_sources [chat_id1] [chat_id2] ... - Add multiple source chats
 • /add_destinations [chat_id1] [chat_id2] ... - Add multiple destination chats
 • /remove_sources [chat_id1] [chat_id2] ... - Remove multiple source chats
 • /remove_destinations [chat_id1] [chat_id2] ... - Remove multiple destination chats
@@ -357,6 +522,8 @@ ${isAdmin ? '*Admin Commands:*\n' : ''}${isAdmin ? `• /add_sources [chat_id1] 
 • /help - Show this message
 
 *Examples:*
+• /clone 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+• /broadcast Hello everyone!
 • /add_sources -100123456789 -100987654321
 • /add_destinations -100123456789 -100987654321 -100555555555
 • /remove_sources -100123456789 -100987654321
@@ -374,6 +541,7 @@ ${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}
 • Keywords: ${config.filters.keywords.length}
 • Message Types: ${config.filters.types.join(', ')}
 • Rate Limit: ${config.rateLimit.maxMessages} msgs/${config.rateLimit.timeWindow}s
+• Cloned Bots: ${botConfig.clonedBots.size}
 
 *Active Chats:*
 Sources:
@@ -492,6 +660,17 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
             ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
           )
         });
+        
+        // Log to channel
+        if (config.logChannel) {
+          const messageType = Object.keys(msg).find(key => 
+            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
+          );
+          
+          await botInstance.sendMessage(config.logChannel,
+            `Message forwarded:\nFrom: ${msg.chat.id}\nTo: ${destChat}\nType: ${messageType}`
+          );
+        }
       }
     }
   } catch (error) {
