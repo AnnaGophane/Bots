@@ -178,7 +178,7 @@ bot.onText(/\/start/, async (msg) => {
   }
 });
 
-// Clone bot command with improved error handling and validation
+// Clone bot command with improved error handling and conflict prevention
 bot.onText(/\/clone (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const newToken = match[1].trim();
@@ -199,20 +199,23 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
       const existingBot = botConfig.clonedBots.get(newToken);
       try {
         await existingBot.bot.stopPolling();
+        // Wait for polling to fully stop
+        await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (error) {
         logger.error('Error stopping existing bot:', error);
       }
       botConfig.clonedBots.delete(newToken);
     }
     
-    // Create new bot instance with proper error handling
+    // Create new bot instance with proper error handling and polling options
     const clonedBot = new TelegramBot(newToken, {
       polling: {
-        interval: 1000,
+        interval: 2000, // Increased interval to reduce conflicts
         autoStart: true,
         params: {
           timeout: 30,
-          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
+          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post'],
+          offset: -1 // Ensure we start with fresh updates
         }
       },
       request: {
@@ -238,20 +241,40 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
     // Set up event handlers for the cloned bot
     setupBotEventHandlers(clonedBot, clonedConfig);
     
-    // Add error handler specifically for cloned bot
+    // Add specific error handler for cloned bot
+    let retryCount = 0;
+    const maxRetries = 5;
     clonedBot.on('polling_error', async (error) => {
-      logger.error('Cloned bot polling error:', {
-        error: error.message,
-        botUsername: me.username
-      });
-      
-      // Notify owner of polling errors
-      try {
-        await bot.sendMessage(msg.from.id, 
-          `⚠️ Your cloned bot @${me.username} encountered an error: ${error.message}`
-        );
-      } catch (notifyError) {
-        logger.error('Failed to notify owner of cloned bot error:', notifyError);
+      // If we get a conflict error, stop polling and restart
+      if (error.message.includes('ETELEGRAM: 409')) {
+        try {
+          await clonedBot.stopPolling();
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+          
+          if (retryCount < maxRetries) {
+            retryCount++;
+            await clonedBot.startPolling();
+            logger.info(`Restarted polling for bot @${me.username} (attempt ${retryCount})`);
+          } else {
+            // If we've tried too many times, notify the owner
+            try {
+              await bot.sendMessage(msg.from.id, 
+                `⚠️ Your cloned bot @${me.username} encountered too many conflicts. Please try cloning again later.`
+              );
+            } catch (notifyError) {
+              logger.error('Failed to notify owner:', notifyError);
+            }
+            // Remove the bot from cloned bots
+            botConfig.clonedBots.delete(newToken);
+          }
+        } catch (restartError) {
+          logger.error('Failed to restart cloned bot:', restartError);
+        }
+      } else {
+        logger.error('Cloned bot error:', {
+          error: error.message,
+          botUsername: me.username
+        });
       }
     });
     
@@ -264,8 +287,9 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
       createdAt: new Date()
     });
     
-    // Send success message with escaped markdown
-    const successMessage = `✅ Bot cloned successfully\\!\n\n` +
+    // Send success message
+    const successMessage = 
+      `✅ Bot cloned successfully\\!\n\n` +
       `*Bot Details:*\n` +
       `• Username: @${me.username}\n` +
       `• Owner: ${msg.from.username ? '@' + msg.from.username : msg.from.first_name}\n\n` +
@@ -276,7 +300,7 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
       disable_web_page_preview: true
     });
     
-    // Log cloning event if log channel is configured
+    // Log cloning event
     if (botConfig.logChannel) {
       await bot.sendMessage(botConfig.logChannel, 
         `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
@@ -721,7 +745,7 @@ async function cleanForwardMessage(msg, botInstance, destChat) {
         is_anonymous: msg.poll.is_anonymous,
         type: msg.poll.type,
         allows_multiple_answers: msg.poll.allows_multiple_answers,
-        correct_option_id: msg.poll.correct_option_id
+        correct_option_id: msg.poll.correct_ option_id
       });
     }
     else if (msg.animation) {
@@ -757,7 +781,8 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
     
     if (!checkRateLimit(msg.chat.id)) {
       logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
-      return; }
+      return;
+    }
     
     for (const destChat of config.destinationChats) {
       const success = await cleanForwardMessage(msg, botInstance, destChat);
