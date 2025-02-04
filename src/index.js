@@ -46,46 +46,74 @@ try {
 // Initialize bot with improved polling configuration
 const bot = new TelegramBot(botConfig.botToken, {
   polling: {
-    interval: 1000,
+    interval: 2000, // Increased interval to reduce server load
     autoStart: true,
     params: {
-      timeout: 30,
+      timeout: 50, // Increased timeout
       allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
     }
+  },
+  request: {
+    timeout: 60000 // Increased request timeout
   },
   webHook: false
 });
 
-// Enhanced polling error handler with exponential backoff
+// Enhanced polling error handler with improved reconnection strategy
 let retryCount = 0;
 const maxRetries = 10;
-const baseDelay = 1000;
+const baseDelay = 2000;
+let isReconnecting = false;
 
 bot.on('polling_error', async (error) => {
+  // Ignore polling errors during reconnection
+  if (isReconnecting) {
+    return;
+  }
+
   logger.error('Polling error:', error.message);
   
   if (retryCount < maxRetries) {
-    const delay = Math.min(baseDelay * Math.pow(2, retryCount), 30000);
+    const delay = Math.min(baseDelay * Math.pow(2, retryCount), 60000); // Max 60 second delay
     retryCount++;
+    isReconnecting = true;
     
     logger.info(`Retrying polling in ${delay}ms (attempt ${retryCount}/${maxRetries})`);
     
     try {
       await bot.stopPolling();
+      
+      // Wait for the polling to fully stop
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       setTimeout(async () => {
         try {
           await bot.startPolling();
           retryCount = 0;
+          isReconnecting = false;
           logger.info('Successfully reconnected polling');
         } catch (startError) {
           logger.error('Failed to restart polling:', startError.message);
+          isReconnecting = false;
         }
       }, delay);
     } catch (stopError) {
       logger.error('Error stopping polling:', stopError.message);
+      isReconnecting = false;
     }
   } else {
-    logger.error('Max polling retries reached. Manual intervention required.');
+    logger.error('Max polling retries reached. Attempting full bot restart...');
+    
+    try {
+      await bot.stopPolling();
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+      await bot.startPolling();
+      retryCount = 0;
+      logger.info('Bot successfully restarted');
+    } catch (error) {
+      logger.error('Failed to restart bot:', error.message);
+      process.exit(1); // Exit to allow container restart
+    }
   }
 });
 
