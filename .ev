@@ -1,30 +1,9 @@
-cp .env.example .env
-# Telegram Bot Token (Get this from @BotFather)
-BOT_TOKEN=5934567890:AAHdqwertyuiopasdfghjklzxcvbnm123456
-
-# Source Chats (Channel/Group IDs where bot will get messages from)
-# Example: Two channels
-SOURCE_CHATS=[-1001234567890,-1001987654321]
-
-# Destination Chats (Channel/Group IDs where bot will forward messages to)
-# Example: One channel and one group
-DESTINATION_CHATS=[-1001234567890,-1001555555555]
-
-# Keywords to filter messages (only forward messages containing these words)
-# Example: Important announcements and news
+BOT_TOKEN=your_bot_token_here
+SOURCE_CHATS=[]
+DESTINATION_CHATS=[]
 FILTER_KEYWORDS=["important","announcement","news","update"]
-
-# Types of messages to forward
 FILTER_TYPES=["text","photo","video","document"]
-
-# Rate Limiting (10 messages per minute)
 RATE_LIMIT_MAX=10
 RATE_LIMIT_WINDOW=60
-
-# Admin Users (Telegram User IDs who can control the bot)
-# Example: Two admin users
-ADMIN_USERS=[123456789,987654321]
-
-# Log Channel (Channel where bot will send its activity logs)
-# Example: A private channel for logs
-LOG_CHANNEL=-1001234567890
+ADMIN_USERS=[]
+LOG_CHANNEL=
