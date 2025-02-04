@@ -18,9 +18,9 @@ const logger = createLogger({
 // Load environment variables
 config();
 
-// Validate bot token
-if (!process.env.BOT_TOKEN) {
-  logger.error('BOT_TOKEN environment variable is required');
+// Validate bot token with proper error message
+if (!process.env.BOT_TOKEN || process.env.BOT_TOKEN === 'your_bot_token_here' || process.env.BOT_TOKEN === '') {
+  logger.error('Valid BOT_TOKEN environment variable is required. Please set it in your .env file.');
   process.exit(1);
 }
 
@@ -28,20 +28,18 @@ if (!process.env.BOT_TOKEN) {
 function safeJSONParse(str, fallback) {
   if (!str) return fallback;
   try {
-    const parsed = JSON.parse(str);
-    return Array.isArray(parsed) ? parsed : fallback;
+    return JSON.parse(str);
   } catch (e) {
-    logger.error(`JSON parsing error: ${e.message}`);
+    logger.error(`JSON parsing error for ${str}: ${e.message}`);
     return fallback;
   }
 }
 
-// Initialize configuration with proper array handling and validation
+// Initialize configuration with proper validation
 let botConfig;
 try {
   botConfig = JSON.parse(readFileSync('./config.json', 'utf8'));
   
-  // Validate bot token from config
   if (!botConfig.botToken) {
     throw new Error('Bot token not found in config');
   }
@@ -52,12 +50,19 @@ try {
   const defaultTypes = ["text", "photo", "video", "document"];
   const defaultKeywords = ["important", "announcement", "news", "update"];
   
-  // Parse environment variables with fallbacks
+  // Parse environment variables with validation
   const sourceChats = safeJSONParse(process.env.SOURCE_CHATS, []);
   const destinationChats = safeJSONParse(process.env.DESTINATION_CHATS, []);
   const keywords = safeJSONParse(process.env.FILTER_KEYWORDS, defaultKeywords);
   const types = safeJSONParse(process.env.FILTER_TYPES, defaultTypes);
   const adminUsers = safeJSONParse(process.env.ADMIN_USERS, []);
+  
+  // Validate arrays
+  if (!Array.isArray(sourceChats) || !Array.isArray(destinationChats) || 
+      !Array.isArray(keywords) || !Array.isArray(types) || !Array.isArray(adminUsers)) {
+    logger.error('Invalid configuration: Arrays expected for SOURCE_CHATS, DESTINATION_CHATS, FILTER_KEYWORDS, FILTER_TYPES, and ADMIN_USERS');
+    process.exit(1);
+  }
   
   botConfig = {
     botToken: process.env.BOT_TOKEN.trim(),
@@ -77,31 +82,39 @@ try {
   };
 }
 
-// Initialize bot with optimized polling configuration
+// Initialize bot with improved error handling
 let bot;
 try {
+  // Verify bot token format
+  if (!/^\d+:[A-Za-z0-9_-]{35}$/.test(botConfig.botToken)) {
+    throw new Error('Invalid bot token format. Please check your token.');
+  }
+  
   bot = new TelegramBot(botConfig.botToken, {
     polling: {
-      interval: 1000, // Balanced polling interval
+      interval: 1000,
       autoStart: true,
       params: {
-        timeout: 30, // Increased timeout for better stability
+        timeout: 30,
         allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
       }
     },
     request: {
-      timeout: 60000, // Increased request timeout
-      retry: 5, // Increased retry attempts
-      connect_timeout: 30000 // Added connection timeout
+      timeout: 60000,
+      retry: 5,
+      connect_timeout: 30000
     },
     webHook: false
   });
   
   // Test connection
-  await bot.getMe();
-  logger.info('Bot connection verified successfully');
+  const me = await bot.getMe();
+  logger.info(`Bot initialized successfully: @${me.username}`);
 } catch (error) {
   logger.error('Failed to initialize bot:', error.message);
+  if (error.message.includes('404')) {
+    logger.error('Bot token is invalid. Please check your token and try again.');
+  }
   process.exit(1);
 }
 
