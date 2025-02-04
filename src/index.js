@@ -77,21 +77,22 @@ try {
   };
 }
 
-// Initialize bot with improved polling configuration
+// Initialize bot with optimized polling configuration
 let bot;
 try {
   bot = new TelegramBot(botConfig.botToken, {
     polling: {
-      interval: 300, // Reduced polling interval
+      interval: 1000, // Balanced polling interval
       autoStart: true,
       params: {
-        timeout: 10, // Reduced timeout
+        timeout: 30, // Increased timeout for better stability
         allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
       }
     },
     request: {
-      timeout: 30000, // Reduced request timeout
-      retry: 3 // Add retry attempts
+      timeout: 60000, // Increased request timeout
+      retry: 5, // Increased retry attempts
+      connect_timeout: 30000 // Added connection timeout
     },
     webHook: false
   });
@@ -104,37 +105,46 @@ try {
   process.exit(1);
 }
 
-// Enhanced polling error handler with better reconnection logic
+// Enhanced polling error handler with improved reconnection logic
 let retryCount = 0;
-const maxRetries = 5;
-const baseDelay = 1000;
+const maxRetries = 10;
+const baseDelay = 2000;
 let isReconnecting = false;
 
 bot.on('polling_error', async (error) => {
+  // Ignore EFATAL errors as they are usually temporary
+  if (error.message.includes('EFATAL')) {
+    return;
+  }
+  
+  // Avoid multiple reconnection attempts
   if (isReconnecting) return;
   
   logger.error('Polling error:', error.message);
   
   if (retryCount < maxRetries) {
-    const delay = Math.min(baseDelay * Math.pow(1.5, retryCount), 5000); // Max 5 second delay
+    const delay = Math.min(baseDelay * Math.pow(1.5, retryCount), 10000); // Max 10 second delay
     retryCount++;
     isReconnecting = true;
     
     try {
       await bot.stopPolling();
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, delay));
       
       await bot.startPolling();
       retryCount = 0;
       isReconnecting = false;
       logger.info('Successfully reconnected');
-    } catch (error) {
-      logger.error('Reconnection failed:', error.message);
+    } catch (reconnectError) {
+      logger.error('Reconnection failed:', reconnectError.message);
       isReconnecting = false;
+      
+      // If we can't reconnect after multiple attempts, restart the process
+      if (retryCount >= maxRetries) {
+        logger.error('Max retries reached, restarting bot...');
+        process.exit(1); // Let the process manager restart the bot
+      }
     }
-  } else {
-    logger.error('Max retries reached, restarting bot...');
-    process.exit(1); // Let the process manager restart the bot
   }
 });
 
