@@ -778,15 +778,18 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     }
 
     else if (text === '/help') {
-      const adminCommands = isAdmin ? `*Admin Commands:*\n` +
-        `• /clone [token] \\- Create your own bot\n` +
-        `• /broadcast [message] \\- Send message to all users\n` +
-        `• /add\\_sources [chat\\_id1] [chat _id2] \\- Add source chats\n` +
-        `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
-        `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
-        `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
-        `• /clear\\_sources \\- Remove all source chats\n` +
-        `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
+// In the handleAdminCommands function, replace the adminCommands section with:
+
+const adminCommands = isAdmin ? `*Admin Commands:*\n` +
+  `• /clone [token] \\- Create your own bot\n` +
+  `• /broadcast [message] \\- Send message to all users\n` +
+  `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` + // Fixed this line
+  `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
+  `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
+  `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
+  `• /clear\\_sources \\- Remove all source chats\n` +
+  `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
+
 
       const helpText = `*Available Commands:*\n\n` +
         `${adminCommands}*General Commands:*\n` +
