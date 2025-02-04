@@ -1,3 +1,8 @@
+import TelegramBot from 'node-telegram-bot-api';
+import { createLogger, format, transports } from 'winston';
+import { config } from 'dotenv';
+import { readFileSync, writeFileSync } from 'fs';
+
 // Configure logger first
 const logger = createLogger({
   format: format.combine(
@@ -777,8 +782,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         `*Admin Commands:*\n` +
         `• /clone [token] \\- Create your own bot\n` +
         `• /broadcast [message] \\- Send message to all users\n` +
+        `• /add\\_sources [chat\\_id1] [chat\\_id2] \\ ```
         `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
-        `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats ```
+        `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
         `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
         `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
         `• /clear\\_sources \\- Remove all source chats\n` +
