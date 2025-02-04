@@ -42,50 +42,51 @@ try {
   };
 }
 
-// Initialize bot with polling and error handling
+// Initialize bot with improved polling configuration
 const bot = new TelegramBot(botConfig.botToken, {
   polling: {
-    interval: 300,
+    interval: 1000, // Increased interval to reduce load
     autoStart: true,
     params: {
-      timeout: 10
+      timeout: 30, // Increased timeout
+      allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post'] // Specify allowed updates
     }
-  }
+  },
+  webHook: false // Explicitly disable webhook mode
 });
 
-// Handle polling errors
-bot.on('polling_error', (error) => {
+// Enhanced polling error handler with exponential backoff
+let retryCount = 0;
+const maxRetries = 10;
+const baseDelay = 1000;
+
+bot.on('polling_error', async (error) => {
   logger.error('Polling error:', error.message);
-});
-
-// Handle general errors
-bot.on('error', (error) => {
-  logger.error('Bot error:', error.message);
-});
-
-// Set up bot commands when starting
-async function setupBotCommands() {
-  try {
-    await bot.setMyCommands([
-      { command: 'start', description: 'Start the bot and get help' },
-      { command: 'clone', description: 'Clone this bot with your own token' },
-      { command: 'add_sources', description: 'Add multiple source chats' },
-      { command: 'add_destinations', description: 'Add multiple destination chats' },
-      { command: 'list_sources', description: 'List all source chats' },
-      { command: 'list_destinations', description: 'List all destination chats' },
-      { command: 'remove_sources', description: 'Remove multiple source chats' },
-      { command: 'remove_destinations', description: 'Remove multiple destination chats' },
-      { command: 'clear_sources', description: 'Remove all source chats' },
-      { command: 'clear_destinations', description: 'Remove all destination chats' },
-      { command: 'broadcast', description: 'Send message to all users (Admin only)' },
-      { command: 'status', description: 'Show bot status' },
-      { command: 'help', description: 'Show help message' }
-    ]);
-    logger.info('Bot commands set up successfully');
-  } catch (error) {
-    logger.error('Error setting up bot commands:', error.message);
+  
+  if (retryCount < maxRetries) {
+    const delay = Math.min(baseDelay * Math.pow(2, retryCount), 30000); // Max 30 second delay
+    retryCount++;
+    
+    logger.info(`Retrying polling in ${delay}ms (attempt ${retryCount}/${maxRetries})`);
+    
+    try {
+      await bot.stopPolling();
+      setTimeout(async () => {
+        try {
+          await bot.startPolling();
+          retryCount = 0; // Reset counter on successful reconnection
+          logger.info('Successfully reconnected polling');
+        } catch (startError) {
+          logger.error('Failed to restart polling:', startError.message);
+        }
+      }, delay);
+    } catch (stopError) {
+      logger.error('Error stopping polling:', stopError.message);
+    }
+  } else {
+    logger.error('Max polling retries reached. Manual intervention required.');
   }
-}
+});
 
 // Welcome message handler
 bot.onText(/\/start/, async (msg) => {
@@ -143,8 +144,18 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
     const testBot = new TelegramBot(newToken, { polling: false });
     const me = await testBot.getMe();
     
-    // Create new bot instance
-    const clonedBot = new TelegramBot(newToken, { polling: true });
+    // Create new bot instance with improved polling configuration
+    const clonedBot = new TelegramBot(newToken, {
+      polling: {
+        interval: 1000,
+        autoStart: true,
+        params: {
+          timeout: 30,
+          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
+        }
+      },
+      webHook: false
+    });
     
     // Create config for cloned bot
     const clonedConfig = {
@@ -730,8 +741,40 @@ setupBotCommands().catch(error => {
   logger.error('Failed to set up bot commands:', error.message);
 });
 
+// Enhanced error handling for the main process
 process.on('unhandledRejection', (error) => {
-  logger.error('Unhandled rejection:', error.message);
+  logger.error('Unhandled rejection:', error);
+  // Don't exit the process, just log the error
 });
 
-logger.info('Bot started successfully');
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception:', error);
+  // Don't exit the process, just log the error
+});
+
+// Graceful shutdown handling
+process.on('SIGINT', async () => {
+  logger.info('Received SIGINT. Graceful shutdown initiated...');
+  try {
+    await bot.stopPolling();
+    logger.info('Bot polling stopped successfully');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+});
+
+process.on('SIGTERM', async () => {
+  logger.info('Received SIGTERM. Graceful shutdown initiated...');
+  try {
+    await bot.stopPolling();
+    logger.info('Bot polling stopped successfully');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+});
+
+logger.info('Bot started successfully with improved error handling');
