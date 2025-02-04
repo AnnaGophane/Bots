@@ -144,43 +144,53 @@ bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const username = msg.from.username || msg.from.first_name;
   
-  const welcomeMessage = `
-Welcome ${username}! 🤖
+  const welcomeMessage = `Welcome ${username}! 🤖
 
 I'm an Auto-Forward bot that can help you forward messages between multiple chats without the forwarded tag.
 
 *Main Commands:*
-/clone - Create your own bot using your token
-/add_sources - Add multiple source chats
-/add_destinations - Add multiple destination chats
-/list_sources - List all source chats
-/list_destinations - List all destination chats
-/remove_sources - Remove multiple source chats
-/remove_destinations - Remove multiple destination chats
-/clear_sources - Remove all source chats
-/clear_destinations - Remove all destination chats
-/status - Check bot status
-/help - Show all commands
+• /clone - Create your own bot using your token
+• /add\\_sources - Add multiple source chats
+• /add\\_destinations - Add multiple destination chats
+• /list\\_sources - List all source chats
+• /list\\_destinations - List all destination chats
+• /remove\\_sources - Remove multiple source chats
+• /remove\\_destinations - Remove multiple destination chats
+• /clear\\_sources - Remove all source chats
+• /clear\\_destinations - Remove all destination chats
+• /status - Check bot status
+• /help - Show all commands
 
 *Examples:*
 • Add multiple sources:
-/add_sources -100123456789 -100987654321
+/add\\_sources \\-100123456789 \\-100987654321
 
 • Add multiple destinations:
-/add_destinations -100123456789 -100987654321 -100555555555
+/add\\_destinations \\-100123456789 \\-100987654321 \\-100555555555
 
 • Remove multiple sources:
-/remove_sources -100123456789 -100987654321
+/remove\\_sources \\-100123456789 \\-100987654321
 
-Note: Some commands require admin privileges.
-`;
+_Note: Some commands require admin privileges\\._`;
 
-  await bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
-  
-  if (botConfig.logChannel) {
-    await bot.sendMessage(botConfig.logChannel, 
-      `New user started the bot:\nID: ${msg.from.id}\nUsername: @${msg.from.username || 'N/A'}\nName: ${msg.from.first_name} ${msg.from.last_name || ''}`
-    );
+  try {
+    await bot.sendMessage(chatId, welcomeMessage, { 
+      parse_mode: 'MarkdownV2',
+      disable_web_page_preview: true 
+    });
+    
+    if (botConfig.logChannel) {
+      await bot.sendMessage(botConfig.logChannel, 
+        `New user started the bot:\nID: ${msg.from.id}\nUsername: @${msg.from.username || 'N/A'}\nName: ${msg.from.first_name} ${msg.from.last_name || ''}`
+      );
+    }
+  } catch (error) {
+    logger.error('Error sending welcome message:', error);
+    // Fallback to plain text if markdown fails
+    await bot.sendMessage(chatId, welcomeMessage.replace(/[*_]/g, ''), { 
+      parse_mode: undefined,
+      disable_web_page_preview: true 
+    });
   }
 });
 
@@ -501,33 +511,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   }
 
   else if (text === '/help') {
-    const adminCommands = isAdmin ? `*Admin Commands:*
-• /clone [token] - Create your own bot
-• /broadcast [message] - Send message to all users
-• /add_sources [chat_id1] [chat_id2] - Add source chats
-• /add_destinations [chat_id1] [chat_id2] - Add destination chats
-• /remove_sources [chat_id1] [chat_id2] - Remove source chats
-• /remove_destinations [chat_id1] [chat_id2] - Remove destination chats
-• /clear_sources - Remove all source chats
-• /clear_destinations - Remove all destination chats\n` : '';
-
-    const helpText = `*Available Commands:*
-
-${adminCommands}*General Commands:*
-• /list_sources - Show source chats
-• /list_destinations - Show destinations
-• /status - Show bot status
-• /help - Show this message
-
-*Examples:*
-• /add_sources -100123456789 -100987654321
-• /add_destinations -100123456789 -100987654321
-${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}`;
-
-    await botInstance.sendMessage(chatId, helpText, { 
-      parse_mode: 'Markdown',
-      disable_web_page_preview: true 
-    });
+    await sendHelpMessage(chatId, isAdmin);
   }
 
   else if (text === '/status') {
@@ -548,6 +532,46 @@ Destinations:
 ${config.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}
     `.trim();
     await botInstance.sendMessage(chatId, status, { parse_mode: 'Markdown' });
+  }
+}
+
+// Help command with fixed formatting
+async function sendHelpMessage(chatId, isAdmin) {
+  const adminCommands = isAdmin ? `*Admin Commands:*
+• /clone \\[token\\] \\- Create your own bot
+• /broadcast \\[message\\] \\- Send message to all users
+• /add\\_sources \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Add source chats
+• /add\\_destinations \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Add destination chats
+• /remove\\_sources \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Remove source chats
+• /remove\\_destinations \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Remove destination chats
+• /clear\\_sources \\- Remove all source chats
+• /clear\\_destinations \\- Remove all destination chats\n` : '';
+
+  const helpText = `*Available Commands:*
+
+${adminCommands}*General Commands:*
+• /list\\_sources \\- Show source chats
+• /list\\_destinations \\- Show destinations
+• /status \\- Show bot status
+• /help \\- Show this message
+
+*Examples:*
+• /add\\_sources \\-100123456789 \\-100987654321
+• /add\\_destinations \\-100123456789 \\-100987654321
+${!isAdmin ? '\n_⚠️ Some commands require admin privileges_' : ''}`;
+
+  try {
+    await bot.sendMessage(chatId, helpText, { 
+      parse_mode: 'MarkdownV2',
+      disable_web_page_preview: true 
+    });
+  } catch (error) {
+    logger.error('Error sending help message:', error);
+    // Fallback to plain text if markdown fails
+    await bot.sendMessage(chatId, helpText.replace(/[*_\[\]]/g, ''), { 
+      parse_mode: undefined,
+      disable_web_page_preview: true 
+    });
   }
 }
 
@@ -780,7 +804,3 @@ process.on('SIGTERM', async () => {
   } catch (error) {
     logger.error('Error during shutdown:', error);
     process.exit(1);
-  }
-});
-
-logger.info('Bot started successfully with improved error handling');
