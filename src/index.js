@@ -1,8 +1,3 @@
-import TelegramBot from 'node-telegram-bot-api';
-import { createLogger, format, transports } from 'winston';
-import { config } from 'dotenv';
-import { readFileSync, writeFileSync } from 'fs';
-
 // Configure logger first
 const logger = createLogger({
   format: format.combine(
@@ -309,8 +304,8 @@ bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
     });
     
     // Log cloning event
-    if (botConfig.logChannel) {
-      await bot.sendMessage(botConfig.logChannel, 
+    if (config.logChannel) {
+      await bot.sendMessage(config.logChannel, 
         `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
       );
     }
@@ -778,15 +773,17 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     }
 
     else if (text === '/help') {
-      const adminCommands = isAdmin ? `*Admin Commands:*\n` +
-  `• /clone [token] \\- Create your own bot\n` +
-  `• /broadcast [message] \\- Send message to all users\n` +
-  `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` + // Fixed this line
-  `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
-  `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
-  `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
-  `• /clear\\_sources \\- Remove all source chats\n` +
-  `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
+      const adminCommands = isAdmin ? 
+        `*Admin Commands:*\n` +
+        `• /clone [token] \\- Create your own bot\n` +
+        `• /broadcast [message] \\- Send message to all users\n` +
+        `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
+        `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats ```
+        `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
+        `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
+        `• /clear\\_sources \\- Remove all source chats\n` +
+        `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
+
       const helpText = `*Available Commands:*\n\n` +
         `${adminCommands}*General Commands:*\n` +
         `• /list\\_sources \\- Show source chats\n` +
@@ -943,3 +940,4 @@ process.on('SIGTERM', async () => {
 });
 
 logger.info('Bot started successfully with improved error handling');
+```
