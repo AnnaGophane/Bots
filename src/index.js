@@ -356,7 +356,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const chatId = msg.chat.id;
 
   const isAdmin = config.admins.includes(msg.from.id);
-  const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations'].some(cmd => text.startsWith(cmd));
+  const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
   
   if (requiresAdmin && !isAdmin) {
     await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges.');
@@ -578,6 +578,43 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       }
     }
 
+    else if (text.startsWith('/broadcast') && isAdmin) {
+      const message = text.slice(10).trim();
+      if (!message) {
+        await botInstance.sendMessage(chatId, 'Please provide a message to broadcast.\nFormat: /broadcast Your message here');
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      const uniqueUsers = new Set([...config.sourceChats, ...config.destinationChats]);
+      
+      for (const userId of uniqueUsers) {
+        try {
+          await botInstance.sendMessage(userId, message);
+          successCount++;
+        } catch (error) {
+          logger.error(`Failed to broadcast to ${userId}:`, error.message);
+          failCount++;
+        }
+      }
+
+      await botInstance.sendMessage(chatId, 
+        `📢 Broadcast completed\n` +
+        `✅ Success: ${successCount}\n` +
+        `❌ Failed: ${failCount}`
+      );
+
+      if (config.logChannel) {
+        await botInstance.sendMessage(config.logChannel,
+          `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
+          `Success: ${successCount}\nFailed: ${failCount}\n` +
+          `Message: ${message}`
+        );
+      }
+    }
+
     else if (text === '/help') {
       const adminCommands = isAdmin ? `*Admin Commands:*\n` +
         `• /clone [token] \\- Create your own bot\n` +
@@ -720,8 +757,7 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
     
     if (!checkRateLimit(msg.chat.id)) {
       logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
-      return;
-    }
+      return; }
     
     for (const destChat of config.destinationChats) {
       const success = await cleanForwardMessage(msg, botInstance, destChat);
@@ -752,8 +788,6 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
     logger.error({
       event: 'forward_error',
       error: error.message,
-      message Continuing the index.js file content exactly where it left off:
-
       messageId: msg.message_id,
       source: msg.chat.id
     });
