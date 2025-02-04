@@ -289,6 +289,46 @@ function matchesFilters(msg) {
   return true;
 }
 
+// Help command with fixed formatting
+async function sendHelpMessage(chatId, isAdmin) {
+  const adminCommands = isAdmin ? `*Admin Commands:*
+• /clone \\[token\\] \\- Create your own bot
+• /broadcast \\[message\\] \\- Send message to all users
+• /add\\_sources \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Add source chats
+• /add\\_destinations \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Add destination chats
+• /remove\\_sources \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Remove source chats
+• /remove\\_destinations \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Remove destination chats
+• /clear\\_sources \\- Remove all source chats
+• /clear\\_destinations \\- Remove all destination chats\n` : '';
+
+  const helpText = `*Available Commands:*
+
+${adminCommands}*General Commands:*
+• /list\\_sources \\- Show source chats
+• /list\\_destinations \\- Show destinations
+• /status \\- Show bot status
+• /help \\- Show this message
+
+*Examples:*
+• /add\\_sources \\-100123456789 \\-100987654321
+• /add\\_destinations \\-100123456789 \\-100987654321
+${!isAdmin ? '\n_⚠️ Some commands require admin privileges_' : ''}`;
+
+  try {
+    await bot.sendMessage(chatId, helpText, { 
+      parse_mode: 'MarkdownV2',
+      disable_web_page_preview: true 
+    });
+  } catch (error) {
+    logger.error('Error sending help message:', error);
+    // Fallback to plain text if markdown fails
+    await bot.sendMessage(chatId, helpText.replace(/[*_\[\]]/g, ''), { 
+      parse_mode: undefined,
+      disable_web_page_preview: true 
+    });
+  }
+}
+
 // Admin commands
 async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const text = msg.text;
@@ -535,46 +575,6 @@ ${config.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}
   }
 }
 
-// Help command with fixed formatting
-async function sendHelpMessage(chatId, isAdmin) {
-  const adminCommands = isAdmin ? `*Admin Commands:*
-• /clone \\[token\\] \\- Create your own bot
-• /broadcast \\[message\\] \\- Send message to all users
-• /add\\_sources \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Add source chats
-• /add\\_destinations \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Add destination chats
-• /remove\\_sources \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Remove source chats
-• /remove\\_destinations \\[chat\\_id1\\] \\[chat\\_id2\\] \\- Remove destination chats
-• /clear\\_sources \\- Remove all source chats
-• /clear\\_destinations \\- Remove all destination chats\n` : '';
-
-  const helpText = `*Available Commands:*
-
-${adminCommands}*General Commands:*
-• /list\\_sources \\- Show source chats
-• /list\\_destinations \\- Show destinations
-• /status \\- Show bot status
-• /help \\- Show this message
-
-*Examples:*
-• /add\\_sources \\-100123456789 \\-100987654321
-• /add\\_destinations \\-100123456789 \\-100987654321
-${!isAdmin ? '\n_⚠️ Some commands require admin privileges_' : ''}`;
-
-  try {
-    await bot.sendMessage(chatId, helpText, { 
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true 
-    });
-  } catch (error) {
-    logger.error('Error sending help message:', error);
-    // Fallback to plain text if markdown fails
-    await bot.sendMessage(chatId, helpText.replace(/[*_\[\]]/g, ''), { 
-      parse_mode: undefined,
-      disable_web_page_preview: true 
-    });
-  }
-}
-
 // Clean forward message function
 async function cleanForwardMessage(msg, botInstance, destChat) {
   try {
@@ -804,3 +804,7 @@ process.on('SIGTERM', async () => {
   } catch (error) {
     logger.error('Error during shutdown:', error);
     process.exit(1);
+  }
+});
+
+logger.info('Bot started successfully with improved error handling');
