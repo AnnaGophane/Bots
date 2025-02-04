@@ -31,6 +31,11 @@ function isValidBotToken(token) {
   return tokenRegex.test(token.trim());
 }
 
+// Helper function to escape markdown v2 characters
+function escapeMarkdown(text) {
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+}
+
 // Initialize configuration with improved error handling
 let botConfig;
 try {
@@ -141,9 +146,9 @@ bot.on('polling_error', async (error) => {
 });
 
 // Welcome message handler with improved formatting
-bot.onText(/\/start/, async (msg) => {
+bot.onText(/^\/start$/, async (msg) => {
   const chatId = msg.chat.id;
-  const username = msg.from.username || msg.from.first_name;
+  const username = escapeMarkdown(msg.from.username || msg.from.first_name);
   
   const welcomeMessage = 
     `Welcome ${username}\\! 🤖\n\n` +
@@ -179,15 +184,17 @@ bot.onText(/\/start/, async (msg) => {
   }
 });
 
-// Clone bot command with improved error handling and conflict prevention
-bot.onText(/\/clone (.+)/, async (msg, match) => {
+// Clone bot command with improved error handling and validation
+bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
   const chatId = msg.chat.id;
   const newToken = match[1].trim();
   
   try {
     // Validate token format first
     if (!isValidBotToken(newToken)) {
-      await bot.sendMessage(chatId, '❌ Invalid bot token format. Please check your token from @BotFather');
+      await bot.sendMessage(chatId, '❌ Invalid bot token format\\. Please check your token from @BotFather', {
+        parse_mode: 'MarkdownV2'
+      });
       return;
     }
 
@@ -200,23 +207,22 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
       const existingBot = botConfig.clonedBots.get(newToken);
       try {
         await existingBot.bot.stopPolling();
-        // Wait for polling to fully stop
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for polling to stop
       } catch (error) {
         logger.error('Error stopping existing bot:', error);
       }
       botConfig.clonedBots.delete(newToken);
     }
     
-    // Create new bot instance with proper error handling and polling options
+    // Create new bot instance with proper error handling
     const clonedBot = new TelegramBot(newToken, {
       polling: {
-        interval: 2000, // Increased interval to reduce conflicts
+        interval: 2000,
         autoStart: true,
         params: {
           timeout: 30,
           allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post'],
-          offset: -1 // Ensure we start with fresh updates
+          offset: -1
         }
       },
       request: {
@@ -246,26 +252,23 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
     let retryCount = 0;
     const maxRetries = 5;
     clonedBot.on('polling_error', async (error) => {
-      // If we get a conflict error, stop polling and restart
+      if (error.message.includes('EFATAL')) return;
+      
+      // Handle conflict errors specifically
       if (error.message.includes('ETELEGRAM: 409')) {
         try {
           await clonedBot.stopPolling();
-          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+          await new Promise(resolve => setTimeout(resolve, 5000));
           
           if (retryCount < maxRetries) {
             retryCount++;
             await clonedBot.startPolling();
             logger.info(`Restarted polling for bot @${me.username} (attempt ${retryCount})`);
           } else {
-            // If we've tried too many times, notify the owner
-            try {
-              await bot.sendMessage(msg.from.id, 
-                `⚠️ Your cloned bot @${me.username} encountered too many conflicts. Please try cloning again later.`
-              );
-            } catch (notifyError) {
-              logger.error('Failed to notify owner:', notifyError);
-            }
-            // Remove the bot from cloned bots
+            const errorMsg = escapeMarkdown(`⚠️ Your cloned bot @${me.username} encountered too many conflicts. Please try cloning again later.`);
+            await bot.sendMessage(msg.from.id, errorMsg, {
+              parse_mode: 'MarkdownV2'
+            });
             botConfig.clonedBots.delete(newToken);
           }
         } catch (restartError) {
@@ -288,13 +291,17 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
       createdAt: new Date()
     });
     
-    // Send success message
+    // Send success message with properly escaped markdown
+    const ownerName = msg.from.username 
+      ? '@' + escapeMarkdown(msg.from.username)
+      : escapeMarkdown(msg.from.first_name);
+    
     const successMessage = 
       `✅ Bot cloned successfully\\!\n\n` +
       `*Bot Details:*\n` +
-      `• Username: @${me.username}\n` +
-      `• Owner: ${msg.from.username ? '@' + msg.from.username : msg.from.first_name}\n\n` +
-      `_You can now use all commands with your bot\\._`;
+      `• Username: @${escapeMarkdown(me.username)}\n` +
+      `• Owner: ${ownerName}\n\n` +
+      `You can now use all commands with your bot\\!`;
     
     await bot.sendMessage(chatId, successMessage, {
       parse_mode: 'MarkdownV2',
@@ -314,17 +321,19 @@ bot.onText(/\/clone (.+)/, async (msg, match) => {
   } catch (error) {
     logger.error('Clone error:', error);
     
-    let errorMessage = '❌ Failed to clone bot. ';
+    let errorMessage = '❌ Failed to clone bot\\. ';
     
     if (error.message.includes('ETELEGRAM: 401')) {
-      errorMessage += 'Invalid bot token. Please check your token and try again.';
+      errorMessage += 'Invalid bot token\\. Please check your token and try again\\.';
     } else if (error.message.includes('ETELEGRAM: 409')) {
-      errorMessage += 'Bot token is already in use by another bot.';
+      errorMessage += 'Bot token is already in use by another bot\\.';
     } else {
-      errorMessage += 'Please try again later or contact support.';
+      errorMessage += 'Please try again later or contact support\\.';
     }
     
-    await bot.sendMessage(chatId, errorMessage);
+    await bot.sendMessage(chatId, errorMessage, {
+      parse_mode: 'MarkdownV2'
+    });
   }
 });
 
@@ -375,6 +384,134 @@ function matchesFilters(msg) {
   return true;
 }
 
+// Clean forward message function with improved error handling
+async function cleanForwardMessage(msg, botInstance, destChat) {
+  try {
+    if (msg.text) {
+      await botInstance.sendMessage(destChat, msg.text, {
+        parse_mode: msg.parse_mode || 'HTML',
+        disable_web_page_preview: msg.disable_web_page_preview
+      });
+    } 
+    else if (msg.photo) {
+      const photo = msg.photo[msg.photo.length - 1];
+      await botInstance.sendPhoto(destChat, photo.file_id, {
+        caption: msg.caption,
+        parse_mode: msg.caption_parse_mode || 'HTML'
+      });
+    }
+    else if (msg.video) {
+      await botInstance.sendVideo(destChat, msg.video.file_id, {
+        caption: msg.caption,
+        parse_mode: msg.caption_parse_mode || 'HTML'
+      });
+    }
+    else if (msg.document) {
+      await botInstance.sendDocument(destChat, msg.document.file_id, {
+        caption: msg.caption,
+        parse_mode: msg.caption_parse_mode || 'HTML'
+      });
+    }
+    else if (msg.audio) {
+      await botInstance.sendAudio(destChat, msg.audio.file_id, {
+        caption: msg.caption,
+        parse_mode: msg.caption_parse_mode || 'HTML'
+      });
+    }
+    else if (msg.voice) {
+      await botInstance.sendVoice(destChat, msg.voice.file_id, {
+        caption: msg.caption,
+        parse_mode: msg.caption_parse_mode || 'HTML'
+      });
+    }
+    else if (msg.video_note) {
+      await botInstance.sendVideoNote(destChat, msg.video_note.file_id);
+    }
+    else if (msg.sticker) {
+      await botInstance.sendSticker(destChat, msg.sticker.file_id);
+    }
+    else if (msg.location) {
+      await botInstance.sendLocation(destChat, msg.location.latitude, msg.location.longitude);
+    }
+    else if (msg.poll) {
+      await botInstance.sendPoll(destChat, msg.poll.question, msg.poll.options.map(opt => opt.text), {
+        is_anonymous: msg.poll.is_anonymous,
+        type: msg.poll.type,
+        allows_multiple_answers: msg.poll.allows_multiple_answers,
+        correct_option_id: msg.poll.correct_option_id
+      });
+    }
+    else if (msg.animation) {
+      await botInstance.sendAnimation(destChat, msg.animation.file_id, {
+        caption: msg.caption,
+        parse_mode: msg.caption_parse_mode || 'HTML'
+      });
+    }
+
+    return true;
+  } catch (error) {
+    logger.error({
+      event: 'clean_forward_error',
+      error: error.message,
+      messageId: msg.message_id,
+      source: msg.chat.id,
+      destination: destChat
+    });
+    return false;
+  }
+}
+
+// Forward message function with improved error handling
+async function forwardMessage(msg, botInstance = bot, config = botConfig) {
+  try {
+    if (!config.sourceChats.includes(msg.chat.id)) {
+      return;
+    }
+    
+    if (!matchesFilters(msg)) {
+      return;
+    }
+    
+    if (!checkRateLimit(msg.chat.id)) {
+      logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
+      return;
+    }
+    
+    for (const destChat of config.destinationChats) {
+      const success = await cleanForwardMessage(msg, botInstance, destChat);
+      
+      if (success) {
+        logger.info({
+          event: 'message_forwarded',
+          source: msg.chat.id,
+          destination: destChat,
+          messageId: msg.message_id,
+          type: Object.keys(msg).find(key => 
+            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
+          )
+        });
+        
+        if (config.logChannel) {
+          const messageType = Object.keys(msg).find(key => 
+            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
+          );
+          
+          await botInstance.sendMessage(config.logChannel,
+            `Message forwarded:\nFrom: ${msg.chat.id}\nTo: ${destChat}\nType: ${messageType}`
+          );
+        }
+      }
+    }
+  } catch (error) {
+    logger.error({
+      event: 'forward_error',
+      error: error.message,
+      messageId: msg.message_id,
+      source: msg.chat.id
+    });
+  }
+}
+
 // Admin commands with improved error handling
 async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const text = msg.text;
@@ -384,7 +521,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
   
   if (requiresAdmin && !isAdmin) {
-    await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges.');
+    await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges\\.');
     return;
   }
 
@@ -644,6 +781,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       const adminCommands = isAdmin ? `*Admin Commands:*\n` +
         `• /clone [token] \\- Create your own bot\n` +
         `• /broadcast [message] \\- Send message to all users\n` +
+        `• /add\\_sources [chat\\_id1] [chat\\_id2]  ```js
         `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
         `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
         `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
@@ -692,135 +830,14 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   }
 }
 
-// Clean forward message function with improved error handling
-async function cleanForwardMessage(msg, botInstance, destChat) {
-  try {
-    if (msg.text) {
-      await botInstance.sendMessage(destChat, msg.text, {
-        parse_mode: msg.parse_mode || 'HTML',
-        disable_web_page_preview: msg.disable_web_page_preview
-      });
-    } 
-    else if (msg.photo) {
-      const photo = msg.photo[msg.photo.length - 1];
-      await botInstance.sendPhoto(destChat, photo.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.video) {
-      await botInstance.sendVideo(destChat, msg.video.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.document) {
-      await botInstance.sendDocument(destChat, msg.document.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.audio) {
-      await botInstance.sendAudio(destChat, msg.audio.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.voice) {
-      await botInstance.sendVoice(destChat, msg.voice.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.video_note) {
-      await botInstance.sendVideoNote(destChat, msg.video_note.file_id);
-    }
-    else if (msg.sticker) {
-      await botInstance.sendSticker(destChat, msg.sticker.file_id);
-    }
-    else if (msg.location) {
-      await botInstance.sendLocation(destChat, msg.location.latitude, msg.location.longitude);
-    }
-    else if (msg.poll) {
-      await botInstance.sendPoll(destChat, msg.poll.question, msg.poll.options.map(opt => opt.text), {
-        is_anonymous: msg.poll.is_anonymous,
-        type: msg.poll.type,
-        allows_multiple_answers: msg.poll.allows_multiple_answers,
-        correct_option_id: msg.poll.correct_option_id
-      }); }
-    else if (msg.animation) {
-      await botInstance.sendAnimation(destChat, msg.animation.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-
-    return true;
-  } catch (error) {
-    logger.error({
-      event: 'clean_forward_error',
-      error: error.message,
-      messageId: msg.message_id,
-      source: msg.chat.id,
-      destination: destChat
-    });
-    return false;
-  }
-}
-
-// Forward message function with improved error handling
-async function forwardMessage(msg, botInstance = bot, config = botConfig) {
-  try {
-    if (!config.sourceChats.includes(msg.chat.id)) {
-      return;
-    }
-    
-    if (!matchesFilters(msg)) {
-      return;
-    }
-    
-    if (!checkRateLimit(msg.chat.id)) {
-      logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
-      return;
-    }
-    
-    for (const destChat of config.destinationChats) {
-      const success = await cleanForwardMessage(msg, botInstance, destChat);
-      
-      if (success) {
-        logger.info({
-          event: 'message_forwarded',
-          source: msg.chat.id,
-          destination: destChat,
-          messageId: msg.message_id,
-          type: Object.keys(msg).find(key => 
-            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
-          )
-        });
-        
-        if (config.logChannel) {
-          const messageType = Object.keys(msg).find(key => 
-            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
-          );
-          
-          await botInstance.sendMessage(config.logChannel,
-            `Message forwarded:\nFrom: ${msg.chat.id}\nTo: ${destChat}\nType: ${messageType}`
-          );
-        }
-      }
-    }
-  } catch (error) {
-    logger.error({
-      event: 'forward_error',
-      error: error.message,
-      messageId: msg.message_id,
-      source: msg.chat.id
-    });
-  }
-}
-
 // Set up event handlers for a bot instance
 function setupBotEventHandlers(botInstance, config) {
+  // Remove any existing handlers
+  botInstance.removeAllListeners('message');
+  botInstance.removeAllListeners('polling_error');
+  botInstance.removeAllListeners('error');
+
+  // Set up new handlers
   botInstance.on('message', async (msg) => {
     if (msg.text?.startsWith('/')) {
       await handleAdminCommands(msg, botInstance, config);
