@@ -18,20 +18,38 @@ const logger = createLogger({
 // Load environment variables
 config();
 
-// Initialize configuration with proper array handling
+// Validate bot token
+if (!process.env.BOT_TOKEN) {
+  logger.error('BOT_TOKEN environment variable is required');
+  process.exit(1);
+}
+
+// Initialize configuration with proper array handling and validation
 let botConfig;
 try {
   botConfig = JSON.parse(readFileSync('./config.json', 'utf8'));
+  
+  // Validate bot token from config
+  if (!botConfig.botToken) {
+    throw new Error('Bot token not found in config');
+  }
 } catch (error) {
   logger.info('Creating new configuration from environment variables');
   const adminUsers = process.env.ADMIN_USERS ? JSON.parse(process.env.ADMIN_USERS) : [];
+  
+  // Ensure bot token is available
+  if (!process.env.BOT_TOKEN) {
+    logger.error('BOT_TOKEN environment variable is required');
+    process.exit(1);
+  }
+  
   botConfig = {
-    botToken: process.env.BOT_TOKEN,
-    sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
-    destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
+    botToken: process.env.BOT_TOKEN.trim(),
+    sourceChats: process.env.SOURCE_CHATS ? JSON.parse(process.env.SOURCE_CHATS) : [],
+    destinationChats: process.env.DESTINATION_CHATS ? JSON.parse(process.env.DESTINATION_CHATS) : [],
     filters: {
-      keywords: JSON.parse(process.env.FILTER_KEYWORDS || '[]'),
-      types: JSON.parse(process.env.FILTER_TYPES || '["text","photo","video","document"]')
+      keywords: process.env.FILTER_KEYWORDS ? JSON.parse(process.env.FILTER_KEYWORDS) : [],
+      types: process.env.FILTER_TYPES ? JSON.parse(process.env.FILTER_TYPES) : ["text","photo","video","document"]
     },
     rateLimit: {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
@@ -39,81 +57,68 @@ try {
     },
     admins: Array.isArray(adminUsers) ? adminUsers : [],
     clonedBots: new Map(),
-    logChannel: process.env.LOG_CHANNEL || ''
+    logChannel: process.env.LOG_CHANNEL ? process.env.LOG_CHANNEL.trim() : ''
   };
 }
 
 // Initialize bot with improved polling configuration
-const bot = new TelegramBot(botConfig.botToken, {
-  polling: {
-    interval: 2000, // Increased interval to reduce server load
-    autoStart: true,
-    params: {
-      timeout: 50, // Increased timeout
-      allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
-    }
-  },
-  request: {
-    timeout: 60000 // Increased request timeout
-  },
-  webHook: false
-});
+let bot;
+try {
+  bot = new TelegramBot(botConfig.botToken, {
+    polling: {
+      interval: 300, // Reduced polling interval
+      autoStart: true,
+      params: {
+        timeout: 10, // Reduced timeout
+        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post']
+      }
+    },
+    request: {
+      timeout: 30000, // Reduced request timeout
+      retry: 3 // Add retry attempts
+    },
+    webHook: false
+  });
+  
+  // Test connection
+  await bot.getMe();
+  logger.info('Bot connection verified successfully');
+} catch (error) {
+  logger.error('Failed to initialize bot:', error.message);
+  process.exit(1);
+}
 
-// Enhanced polling error handler with improved reconnection strategy
+// Enhanced polling error handler with better reconnection logic
 let retryCount = 0;
-const maxRetries = 10;
-const baseDelay = 2000;
+const maxRetries = 5;
+const baseDelay = 1000;
 let isReconnecting = false;
 
 bot.on('polling_error', async (error) => {
-  // Ignore polling errors during reconnection
-  if (isReconnecting) {
-    return;
-  }
-
+  if (isReconnecting) return;
+  
   logger.error('Polling error:', error.message);
   
   if (retryCount < maxRetries) {
-    const delay = Math.min(baseDelay * Math.pow(2, retryCount), 60000); // Max 60 second delay
+    const delay = Math.min(baseDelay * Math.pow(1.5, retryCount), 5000); // Max 5 second delay
     retryCount++;
     isReconnecting = true;
     
-    logger.info(`Retrying polling in ${delay}ms (attempt ${retryCount}/${maxRetries})`);
-    
     try {
       await bot.stopPolling();
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Wait for the polling to fully stop
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setTimeout(async () => {
-        try {
-          await bot.startPolling();
-          retryCount = 0;
-          isReconnecting = false;
-          logger.info('Successfully reconnected polling');
-        } catch (startError) {
-          logger.error('Failed to restart polling:', startError.message);
-          isReconnecting = false;
-        }
-      }, delay);
-    } catch (stopError) {
-      logger.error('Error stopping polling:', stopError.message);
+      await bot.startPolling();
+      retryCount = 0;
+      isReconnecting = false;
+      logger.info('Successfully reconnected');
+    } catch (error) {
+      logger.error('Reconnection failed:', error.message);
       isReconnecting = false;
     }
   } else {
-    logger.error('Max polling retries reached. Attempting full bot restart...');
-    
-    try {
-      await bot.stopPolling();
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-      await bot.startPolling();
-      retryCount = 0;
-      logger.info('Bot successfully restarted');
-    } catch (error) {
-      logger.error('Failed to restart bot:', error.message);
-      process.exit(1); // Exit to allow container restart
-    }
+    logger.error('Max retries reached, restarting bot...');
+    process.exit(1); // Let the process manager restart the bot
   }
 });
 
