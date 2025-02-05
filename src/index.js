@@ -47,7 +47,7 @@ try {
     botToken: process.env.BOT_TOKEN,
     sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
     destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
-    userDestinationChats: new Map(), // Added for per-user destinations
+    userDestinationChats: new Map(),
     filters: {
       keywords: JSON.parse(process.env.FILTER_KEYWORDS || '[]'),
       types: JSON.parse(process.env.FILTER_TYPES || '["text","photo","video","document"]')
@@ -224,175 +224,6 @@ bot.on('polling_error', async (error) => {
   }
 });
 
-// Clone bot command with improved error handling and validation
-bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const newToken = match[1]?.trim();
-  
-  // Check force subscribe first
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
-  if (!newToken) {
-    await bot.sendMessage(chatId, 
-      '❌ Please provide a bot token\\.\n' +
-      'Format: `/clone YOUR_BOT_TOKEN`\n\n' +
-      'Get a token from @BotFather', {
-      parse_mode: 'MarkdownV2'
-    });
-    return;
-  }
-  
-  try {
-    // Validate token format first
-    if (!isValidBotToken(newToken)) {
-      await bot.sendMessage(chatId, '❌ Invalid bot token format\\. Please check your token from @BotFather', {
-        parse_mode: 'MarkdownV2'
-      });
-      return;
-    }
-
-    // Test the token with a temporary bot instance
-    const testBot = new TelegramBot(newToken, { polling: false });
-    const me = await testBot.getMe();
-    
-    // If the bot already exists in cloned bots, stop it first
-    if (botConfig.clonedBots.has(newToken)) {
-      const existingBot = botConfig.clonedBots.get(newToken);
-      try {
-        await existingBot.bot.stopPolling();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (error) {
-        logger.error('Error stopping existing bot:', error);
-      }
-      botConfig.clonedBots.delete(newToken);
-    }
-    
-    // Create new bot instance with proper error handling
-    const clonedBot = new TelegramBot(newToken, {
-      polling: {
-        interval: 2000,
-        autoStart: true,
-        params: {
-          timeout: 30,
-          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
-          offset: -1
-        }
-      },
-      request: {
-        timeout: 30000,
-        retry: 3,
-        connect_timeout: 10000
-      },
-      webHook: false
-    });
-    
-    // Set up configuration for cloned bot
-    const clonedConfig = {
-      botToken: newToken,
-      sourceChats: [],
-      destinationChats: [],
-      userDestinationChats: new Map(),
-      filters: { ...botConfig.filters },
-      rateLimit: { ...botConfig.rateLimit },
-      admins: [msg.from.id],
-      owner: msg.from.id,
-      logChannel: botConfig.logChannel,
-      forceSubscribe: [...botConfig.forceSubscribe]
-    };
-    
-    // Set up event handlers for the cloned bot
-    setupBotEventHandlers(clonedBot, clonedConfig);
-    
-    // Add specific error handler for cloned bot
-    let retryCount = 0;
-    const maxRetries = 5;
-    clonedBot.on('polling_error', async (error) => {
-      if (error.message.includes('EFATAL')) return;
-      
-      if (error.message.includes('ETELEGRAM: 409')) {
-        try {
-          await clonedBot.stopPolling();
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          
-          if (retryCount < maxRetries) {
-            retryCount++;
-            await clonedBot.startPolling();
-            logger.info(`Restarted polling for bot @${me.username} (attempt ${retryCount})`);
-          } else {
-            const errorMsg = escapeMarkdown(`⚠️ Your cloned bot @${me.username} encountered too many conflicts. Please try cloning again later.`);
-            await bot.sendMessage(msg.from.id, errorMsg, {
-              parse_mode: 'MarkdownV2'
-            });
-            botConfig.clonedBots.delete(newToken);
-          }
-        } catch (restartError) {
-          logger.error('Failed to restart cloned bot:', restartError);
-        }
-      } else {
-        logger.error('Cloned bot error:', {
-          error: error.message,
-          botUsername: me.username
-        });
-      }
-    });
-    
-    // Store the cloned bot
-    botConfig.clonedBots.set(newToken, {
-      bot: clonedBot,
-      config: clonedConfig,
-      owner: msg.from.id,
-      username: me.username,
-      createdAt: new Date()
-    });
-    
-    // Send success message with properly escaped markdown
-    const ownerName = msg.from.username 
-      ? '@' + escapeMarkdown(msg.from.username)
-      : escapeMarkdown(msg.from.first_name);
-    
-    const successMessage = 
-      `✅ Bot cloned successfully\\!\n\n` +
-      `*Bot Details:*\n` +
-      `• Username: @${escapeMarkdown(me.username)}\n` +
-      `• Owner: ${ownerName}\n\n` +
-      `You can now use all commands with your bot\\!`;
-    
-    await bot.sendMessage(chatId, successMessage, {
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true
-    });
-    
-    // Log cloning event
-    if (botConfig.logChannel) {
-      await bot.sendMessage(botConfig.logChannel, 
-        `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
-      );
-    }
-    
-    // Save updated configuration
-    saveConfig();
-    
-  } catch (error) {
-    logger.error('Clone error:', error);
-    
-    let errorMessage = '❌ Failed to clone bot\\. ';
-    
-    if (error.message.includes('ETELEGRAM: 401')) {
-      errorMessage += 'Invalid bot token\\. Please check your token and try again\\.';
-    } else if (error.message.includes('ETELEGRAM: 409')) {
-      errorMessage += 'Bot token is already in use by another bot\\.';
-    } else {
-      errorMessage += 'Please try again later or contact support\\.';
-    }
-    
-    await bot.sendMessage(chatId, errorMessage, {
-      parse_mode: 'MarkdownV2'
-    });
-  }
-});
-
 // Updated command handler for both admin and user commands
 async function handleCommands(msg, botInstance = bot, config = botConfig) {
   const text = msg.text;
@@ -489,12 +320,12 @@ async function handleCommands(msg, botInstance = bot, config = botConfig) {
         config.userDestinationChats.set(userId, userDests);
         saveConfig();
         
-        const message = [
+        const destMessage = [
           added > 0 ? `✅ Added ${added} new destination${added > 1 ? 's' : ''}` : '',
           skipped > 0 ? `⚠️ Skipped ${skipped} existing destination${skipped > 1 ? 's' : ''}` : ''
         ].filter(Boolean).join('\n');
         
-        await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+        await botInstance.sendMessage(chatId, destMessage || '⚠️ No valid chat IDs provided');
         break;
 
       case '/remove_destinations':
@@ -556,8 +387,8 @@ async function handleCommands(msg, botInstance = bot, config = botConfig) {
           await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges.');
           return;
         }
-        const message = args.join(' ');
-        if (!message) {
+        const broadcastText = args.join(' ');
+        if (!broadcastText) {
           await botInstance.sendMessage(chatId, 
             'Please provide a message to broadcast.\n' +
             'Format: /broadcast Your message here'
@@ -580,7 +411,7 @@ async function handleCommands(msg, botInstance = bot, config = botConfig) {
           
           for (const userId of uniqueUsers) {
             try {
-              await botInstance.sendMessage(userId, message);
+              await botInstance.sendMessage(userId, broadcastText);
               successCount++;
               
               // Update status every 10 messages
@@ -617,7 +448,7 @@ async function handleCommands(msg, botInstance = bot, config = botConfig) {
             await botInstance.sendMessage(config.logChannel,
               `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
               `Success: ${successCount}\nFailed: ${failCount}\n` +
-              `Message: ${message}`
+              `Message: ${broadcastText}`
             );
           }
         } catch (error) {
@@ -810,8 +641,6 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
     }
     
     if (!checkRateLimit(msg.chat.id)) {
-      logger.warn(` Here's the continuation of the index.js file content:
-
       logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
       return;
     }
@@ -949,6 +778,66 @@ process.on('SIGINT', async () => {
   logger.info('Received SIGINT. Graceful shutdown initiated...');
   try {
     await bot.stopPolling();
+Indent mode
+
+Spaces
+Indent size
+
+2
+Line wrap mode
+
+No wrap
+Editing index.js file contents
+753
+754
+755
+756
+757
+758
+759
+760
+761
+762
+763
+764
+765
+766
+767
+768
+769
+770
+771
+772
+773
+774
+775
+776
+777
+778
+779
+780
+781
+782
+783
+784
+785
+786
+787
+788
+789
+790
+791
+792
+793
+794
+795
+796
+797
+798
+799
+800
+801
+
     logger.info('Bot polling stopped successfully');
     process.exit(0);
   } catch (error) {
