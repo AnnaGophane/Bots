@@ -760,7 +760,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     for (const sourceChat of botConfig.sourceChats) {
       if (sourceChat > 0) users.add(sourceChat);
     }
-    for (const const destChat of botConfig.destinationChats) {
+    for (const destChat of botConfig.destinationChats) {
       if (destChat > 0) users.add(destChat);
     }
     
