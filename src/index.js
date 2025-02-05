@@ -1,3 +1,4 @@
+// Import required modules
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
@@ -797,7 +798,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
 
     else if (text === '/list_sources') {
       const sources = config.sourceChats.length > 0 
-        ? config.sourceChats.map(id => `• ${id}`).join('\n')
+        ? config.sourceChats.map(id => ` Here's the continuation of the index.js file content:
+
+• ${id}`).join('\n')
         : 'No source chats configured';
       await botInstance.sendMessage(chatId, `📋 *Source Chats:*\n${sources}`, { 
         parse_mode: 'Markdown',
