@@ -1,3 +1,4 @@
+// Import required modules
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
@@ -110,15 +111,15 @@ async function checkForceSubscribe(msg, botInstance, config) {
   
   if (notSubscribed.length > 0) {
     const buttons = notSubscribed.map(channel => [{
-      text: `📢 Join ${channel.title || channel.username || channel.id}`,
-      url: `https://t.me/${channel.username}`
+      text: '📢 Join ' + (channel.title || channel.username || channel.id),
+      url: 'https://t.me/' + channel.username
     }]);
     
     buttons.push([{ text: '🔄 Check Subscription', callback_data: 'check_subscription' }]);
     
     await botInstance.sendMessage(msg.chat.id,
-      `⚠️ *Please join our channel${notSubscribed.length > 1 ? 's' : ''} to use this bot\\!*\n\n` +
-      `Click the button${notSubscribed.length > 1 ? 's' : ''} below to join:`, {
+      '⚠️ *Please join our channel' + (notSubscribed.length > 1 ? 's' : '') + ' to use this bot\\!*\n\n' +
+      'Click the button' + (notSubscribed.length > 1 ? 's' : '') + ' below to join:', {
       parse_mode: 'MarkdownV2',
       reply_markup: {
         inline_keyboard: buttons
@@ -141,13 +142,13 @@ bot.onText(/^\/start$/, async (msg) => {
   }
   
   const welcomeMessage = 
-    `Welcome ${username}\\! 🤖\n\n` +
-    `I'm an Auto\\-Forward bot that can help you forward messages between multiple chats without the forwarded tag\\.\n\n` +
-    `*Available Commands:*\n` +
-    `• /list\\_sources \\- List all source chats\n` +
-    `• /list\\_destinations \\- List all destination chats\n` +
-    `• /status \\- Check bot status\n` +
-    `• /help \\- Show all commands\n\n`;
+    'Welcome ' + username + '\\! 🤖\n\n' +
+    'I\'m an Auto\\-Forward bot that can help you forward messages between multiple chats without the forwarded tag\\.\n\n' +
+    '*Available Commands:*\n' +
+    '• /list\\_sources \\- List all source chats\n' +
+    '• /list\\_destinations \\- List all destination chats\n' +
+    '• /status \\- Check bot status\n' +
+    '• /help \\- Show all commands\n\n';
 
   await bot.sendMessage(chatId, welcomeMessage, { 
     parse_mode: 'MarkdownV2',
@@ -156,7 +157,7 @@ bot.onText(/^\/start$/, async (msg) => {
   
   if (botConfig.logChannel) {
     await bot.sendMessage(botConfig.logChannel, 
-      `New user started the bot:\nID: ${msg.from.id}\nUsername: @${msg.from.username || 'N/A'}\nName: ${msg.from.first_name} ${msg.from.last_name || ''}`
+      'New user started the bot:\nID: ' + msg.from.id + '\nUsername: @' + (msg.from.username || 'N/A') + '\nName: ' + msg.from.first_name + ' ' + (msg.from.last_name || '')
     );
   }
 });
@@ -171,24 +172,24 @@ bot.onText(/^\/help$/, async (msg) => {
     return;
   }
   
-  const helpText = `*Available Commands:*\n\n` +
-    `• /list\\_sources \\- Show source chats\n` +
-    `• /list\\_destinations \\- Show destinations\n` +
-    `• /status \\- Show bot status\n` +
-    `• /help \\- Show this message\n\n` +
+  const helpText = '*Available Commands:*\n\n' +
+    '• /list\\_sources \\- Show source chats\n' +
+    '• /list\\_destinations \\- Show destinations\n' +
+    '• /status \\- Show bot status\n' +
+    '• /help \\- Show this message\n\n' +
     (isAdmin ? 
-      `*Admin Commands:*\n` +
-      `• /clone [token] \\- Create your own bot\n` +
-      `• /broadcast [message] \\- Send message to all users\n` +
-      `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
-      `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
-      `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
-      `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
-      `• /clear\\_sources \\- Remove all source chats\n` +
-      `• /clear\\_destinations \\- Remove all destination chats\n\n` +
-      `*Examples:*\n` +
-      `• /add\\_sources \\-100123456789 \\-100987654321\n` +
-      `• /add\\_destinations \\-100123456789 \\-100987654321\n` : '');
+      '*Admin Commands:*\n' +
+      '• /clone [token] \\- Create your own bot\n' +
+      '• /broadcast [message] \\- Send message to all users\n' +
+      '• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n' +
+      '• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n' +
+      '• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n' +
+      '• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n' +
+      '• /clear\\_sources \\- Remove all source chats\n' +
+      '• /clear\\_destinations \\- Remove all destination chats\n\n' +
+      '*Examples:*\n' +
+      '• /add\\_sources \\-100123456789 \\-100987654321\n' +
+      '• /add\\_destinations \\-100123456789 \\-100987654321\n' : '');
 
   await bot.sendMessage(chatId, helpText, { 
     parse_mode: 'MarkdownV2',
@@ -216,9 +217,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   try {
     if (text === '/list_sources') {
       const sources = config.sourceChats.length > 0 
-        ? config.sourceChats.map(id => `• ${id}`).join('\n')
+        ? config.sourceChats.map(id => '• ' + id).join('\n')
         : 'No source chats configured';
-      await botInstance.sendMessage(chatId, `📋 *Source Chats:*\n${sources}`, { 
+      await botInstance.sendMessage(chatId, '📋 *Source Chats:*\n' + sources, { 
         parse_mode: 'Markdown',
         disable_web_page_preview: true
       });
@@ -226,9 +227,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
 
     else if (text === '/list_destinations') {
       const destinations = config.destinationChats.length > 0
-        ? config.destinationChats.map(id => `• ${id}`).join('\n')
+        ? config.destinationChats.map(id => '• ' + id).join('\n')
         : 'No destination chats configured';
-      await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { 
+      await botInstance.sendMessage(chatId, '📋 *Destination Chats:*\n' + destinations, { 
          parse_mode: 'Markdown',
         disable_web_page_preview: true
       });
@@ -236,16 +237,16 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
 
     else if (text === '/status') {
       const status = 
-        `*Bot Status:*\n` +
-        `• Sources: ${config.sourceChats.length}\n` +
-        `• Destinations: ${config.destinationChats.length}\n` +
-        `• Keywords: ${config.filters.keywords.length}\n` +
-        `• Message Types: ${config.filters.types.join(', ')}\n` +
-        `• Rate Limit: ${config.rateLimit.maxMessages} msgs/${config.rateLimit.timeWindow}s\n` +
-        `• Cloned Bots: ${botConfig.clonedBots.size}\n\n` +
-        `*Active Chats:*\n` +
-        `Sources:\n${config.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
-        `Destinations:\n${config.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
+        '*Bot Status:*\n' +
+        '• Sources: ' + config.sourceChats.length + '\n' +
+        '• Destinations: ' + config.destinationChats.length + '\n' +
+        '• Keywords: ' + config.filters.keywords.length + '\n' +
+        '• Message Types: ' + config.filters.types.join(', ') + '\n' +
+        '• Rate Limit: ' + config.rateLimit.maxMessages + ' msgs/' + config.rateLimit.timeWindow + 's\n' +
+        '• Cloned Bots: ' + botConfig.clonedBots.size + '\n\n' +
+        '*Active Chats:*\n' +
+        'Sources:\n' + (config.sourceChats.map(id => '• ' + id).join('\n') || 'None') + '\n\n' +
+        'Destinations:\n' + (config.destinationChats.map(id => '• ' + id).join('\n') || 'None');
 
       await botInstance.sendMessage(chatId, status, { 
         parse_mode: 'Markdown',
@@ -282,8 +283,8 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         saveConfig();
         
         const message = [
-          added > 0 ? `✅ Added ${added} new source${added > 1 ? 's' : ''}` : '',
-          skipped > 0 ? `⚠️ Skipped ${skipped} existing source${skipped > 1 ? 's' : ''}` : ''
+          added > 0 ? '✅ Added ' + added + ' new source' + (added > 1 ? 's' : '') : '',
+          skipped > 0 ? '⚠️ Skipped ' + skipped + ' existing source' + (skipped > 1 ? 's' : '') : ''
         ].filter(Boolean).join('\n');
         
         await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
@@ -316,8 +317,8 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         saveConfig();
         
         const message = [
-          added > 0 ? `✅ Added ${added} new destination${added > 1 ? 's' : ''}` : '',
-          skipped > 0 ? `⚠️ Skipped ${skipped} existing destination${skipped > 1 ? 's' : ''}` : ''
+          added > 0 ? '✅ Added ' + added + ' new destination' + (added > 1 ? 's' : '') : '',
+          skipped > 0 ? '⚠️ Skipped ' + skipped + ' existing destination' + (skipped > 1 ? 's' : '') : ''
         ].filter(Boolean).join('\n');
         
         await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
@@ -350,9 +351,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         saveConfig();
         
         const message = [
-          removed > 0 ? `✅ Removed ${removed} source${removed > 1 ? 's' : ''}` : '',
-          notFound > 0 ? `⚠️ Not found: ${notFound}` : '',
-          invalid > 0 ? `❌ Invalid IDs: ${invalid}` : ''
+          removed > 0 ? '✅ Removed ' + removed + ' source' + (removed > 1 ? 's' : '') : '',
+          notFound > 0 ? '⚠️ Not found: ' + notFound : '',
+          invalid > 0 ? '❌ Invalid IDs: ' + invalid : ''
         ].filter(Boolean).join('\n');
         
         await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
@@ -385,9 +386,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         saveConfig();
         
         const message = [
-          removed > 0 ? `✅ Removed ${removed} destination${removed > 1 ? 's' : ''}` : '',
-          notFound > 0 ? `⚠️ Not found: ${notFound}` : '',
-          invalid > 0 ? `❌ Invalid IDs: ${invalid}` : ''
+          removed > 0 ? '✅ Removed ' + removed + ' destination' + (removed > 1 ? 's' : '') : '',
+          notFound > 0 ? '⚠️ Not found: ' + notFound : '',
+          invalid > 0 ? '❌ Invalid IDs: ' + invalid : ''
         ].filter(Boolean).join('\n');
         
         await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
@@ -397,14 +398,14 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         const count = config.sourceChats.length;
         config.sourceChats = [];
         saveConfig();
-        await botInstance.sendMessage(chatId, `✅ Cleared all ${count} source chat${count !== 1 ? 's' : ''}`);
+        await botInstance.sendMessage(chatId, '✅ Cleared all ' + count + ' source chat' + (count !== 1 ? 's' : ''));
       }
 
       else if (text === '/clear_destinations') {
         const count = config.destinationChats.length;
         config.destinationChats = [];
         saveConfig();
-        await botInstance.sendMessage(chatId, `✅ Cleared all ${count} destination chat${count !== 1 ? 's' : ''}`);
+        await botInstance.sendMessage(chatId, '✅ Cleared all ' + count + ' destination chat' + (count !== 1 ? 's' : ''));
       }
     }
   } catch (error) {
@@ -543,7 +544,7 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
     }
     
     if (!checkRateLimit(msg.chat.id)) {
-      logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
+      logger.warn('Rate limit exceeded for chat ' + msg.chat.id);
       return;
     }
     
@@ -662,9 +663,9 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
           if (retryCount < maxRetries) {
             retryCount++;
             await clonedBot.startPolling();
-            logger.info(`Restarted polling for bot @${me.username} (attempt ${retryCount})`);
+            logger.info('Restarted polling for bot @' + me.username + ' (attempt ' + retryCount + ')');
           } else {
-            const errorMsg = escapeMarkdown(`⚠️ Your cloned bot @${me.username} encountered too many conflicts. Please try cloning again later.`);
+            const errorMsg = escapeMarkdown('⚠️ Your cloned bot @' + me.username + ' encountered too many conflicts. Please try cloning again later.');
             await bot.sendMessage(msg.from.id, errorMsg, {
               parse_mode: 'MarkdownV2'
             });
@@ -696,11 +697,11 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       : escapeMarkdown(msg.from.first_name);
     
     const successMessage = 
-      `✅ Bot cloned successfully\\!\n\n` +
-      `*Bot Details:*\n` +
-      `• Username: @${escapeMarkdown(me.username)}\n` +
-      `• Owner: ${ownerName}\n\n` +
-      `You can now use all commands with your bot\\!`;
+      '✅ Bot cloned successfully\\!\n\n' +
+      '*Bot Details:*\n' +
+      '• Username: @' + escapeMarkdown(me.username) + '\n' +
+      '• Owner: ' + ownerName + '\n\n' +
+      'You can now use all commands with your bot\\!';
     
     await bot.sendMessage(chatId, successMessage, {
       parse_mode: 'MarkdownV2',
@@ -710,7 +711,7 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
     // Log cloning event
     if (botConfig.logChannel) {
       await bot.sendMessage(botConfig.logChannel, 
-        `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
+        'New bot cloned:\nOwner: ' + msg.from.id + ' (@' + (msg.from.username || 'N/A') + ')\nBot: @' + me.username
       );
     }
     
@@ -763,8 +764,9 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     
     let sent = 0;
     let failed = 0;
-     ```javascript
+    
     // Send message to all users
+     // Send message to all users
     for (const userId of users) {
       try {
         await bot.sendMessage(userId, message, {
@@ -773,7 +775,8 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
         });
         sent++;
       } catch (error) {
-        logger.error(`Failed to send broadcast to ${userId}:`, error);
+        // Fix: Use string concatenation instead of template literal
+        logger.error('Failed to send broadcast to ' + userId + ':', error);
         failed++;
       }
       
@@ -783,10 +786,10 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     
     // Send summary to admin
     const summary = 
-      `📢 *Broadcast Summary*\n\n` +
-      `• Total Users: ${users.size}\n` +
-      `• Successfully Sent: ${sent}\n` +
-      `• Failed: ${failed}`;
+      '📢 *Broadcast Summary*\n\n' +
+      '• Total Users: ' + users.size + '\n' +
+      '• Successfully Sent: ' + sent + '\n' +
+      '• Failed: ' + failed;
     
     await bot.sendMessage(chatId, summary, {
       parse_mode: 'Markdown'
@@ -795,8 +798,8 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     // Log broadcast event
     if (botConfig.logChannel) {
       await bot.sendMessage(botConfig.logChannel,
-        `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
-        `Total: ${users.size}\nSuccess: ${sent}\nFailed: ${failed}`
+        'Broadcast sent by ' + msg.from.id + ' (@' + (msg.from.username || 'N/A') + ')\n' +
+        'Total: ' + users.size + '\nSuccess: ' + sent + '\nFailed: ' + failed
       );
     }
     
@@ -937,4 +940,3 @@ process.on('SIGTERM', async () => {
 // Initialize the bot
 setupBotCommands();
 logger.info('Bot started successfully');
-```
