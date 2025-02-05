@@ -30,7 +30,7 @@ if (!process.env.BOT_TOKEN) {
   process.exit(1);
 }
 
-// Initialize bot with proper options for Railway
+// Initialize bot with proper options
 const bot = new TelegramBot(process.env.BOT_TOKEN, {
   polling: {
     interval: 300,
@@ -110,15 +110,15 @@ async function checkForceSubscribe(msg, botInstance, config) {
   
   if (notSubscribed.length > 0) {
     const buttons = notSubscribed.map(channel => [{
-      text: '📢 Join ' + (channel.title || channel.username || channel.id),
-      url: 'https://t.me/' + channel.username
+      text: `📢 Join ${channel.title || channel.username || channel.id}`,
+      url: `https://t.me/${channel.username}`
     }]);
     
     buttons.push([{ text: '🔄 Check Subscription', callback_data: 'check_subscription' }]);
     
     await botInstance.sendMessage(msg.chat.id,
-      '⚠️ *Please join our channel' + (notSubscribed.length > 1 ? 's' : '') + ' to use this bot\\!*\n\n' +
-      'Click the button' + (notSubscribed.length > 1 ? 's' : '') + ' below to join:', {
+      `⚠️ *Please join our channel${notSubscribed.length > 1 ? 's' : ''} to use this bot\\!*\n\n` +
+      `Click the button${notSubscribed.length > 1 ? 's' : ''} below to join:`, {
       parse_mode: 'MarkdownV2',
       reply_markup: {
         inline_keyboard: buttons
@@ -135,19 +135,18 @@ bot.onText(/^\/start$/, async (msg) => {
   const chatId = msg.chat.id;
   const username = escapeMarkdown(msg.from.username || msg.from.first_name);
   
-  // Check force subscribe first
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
   
   const welcomeMessage = 
-    'Welcome ' + username + '\\! 🤖\n\n' +
-    'I\'m an Auto\\-Forward bot that can help you forward messages between multiple chats without the forwarded tag\\.\n\n' +
-    '*Available Commands:*\n' +
-    '• /list\\_sources \\- List all source chats\n' +
-    '• /list\\_destinations \\- List all destination chats\n' +
-    '• /status \\- Check bot status\n' +
-    '• /help \\- Show all commands\n\n';
+    `Welcome ${username}\\! 🤖\n\n` +
+    `I'm an Auto\\-Forward bot that can help you forward messages between multiple chats without the forwarded tag\\.\n\n` +
+    `*Available Commands:*\n` +
+    `• /list\\_sources \\- List all source chats\n` +
+    `• /list\\_destinations \\- List all destination chats\n` +
+    `• /status \\- Check bot status\n` +
+    `• /help \\- Show all commands\n\n`;
 
   await bot.sendMessage(chatId, welcomeMessage, { 
     parse_mode: 'MarkdownV2',
@@ -156,7 +155,7 @@ bot.onText(/^\/start$/, async (msg) => {
   
   if (botConfig.logChannel) {
     await bot.sendMessage(botConfig.logChannel, 
-      'New user started the bot:\nID: ' + msg.from.id + '\nUsername: @' + (msg.from.username || 'N/A') + '\nName: ' + msg.from.first_name + ' ' + (msg.from.last_name || '')
+      `New user started the bot:\nID: ${msg.from.id}\nUsername: @${msg.from.username || 'N/A'}\nName: ${msg.from.first_name} ${msg.from.last_name || ''}`
     );
   }
 });
@@ -166,7 +165,6 @@ bot.onText(/^\/help$/, async (msg) => {
   const chatId = msg.chat.id;
   const isAdmin = botConfig.admins.includes(msg.from.id);
   
-  // Check force subscribe first
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
@@ -201,7 +199,6 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const text = msg.text;
   const chatId = msg.chat.id;
 
-  // Check force subscribe first
   if (!(await checkForceSubscribe(msg, botInstance, config))) {
     return;
   }
@@ -210,7 +207,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
   
   if (requiresAdmin && !isAdmin) {
-    return; // Silently ignore admin commands for non-admin users
+    return;
   }
 
   try {
@@ -253,7 +250,6 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       });
     }
 
-    // Admin-only commands
     if (isAdmin) {
       if (text.startsWith('/add_sources')) {
         const sourceIds = text.split(' ').slice(1).map(id => parseInt(id));
@@ -430,7 +426,6 @@ function checkRateLimit(chatId) {
   recentMessages.push(now);
   messageCounter.set(chatId, recentMessages);
   
-  // Cleanup old entries
   if (recentMessages.length > botConfig.rateLimit.maxMessages * 2) {
     messageCounter.set(chatId, recentMessages.slice(-botConfig.rateLimit.maxMessages));
   }
@@ -571,12 +566,10 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
   const chatId = msg.chat.id;
   const newToken = match[1]?.trim();
   
-  // Check if user is admin
   if (!botConfig.admins.includes(msg.from.id)) {
-    return; // Silently ignore for non-admins
+    return;
   }
   
-  // Check force subscribe first
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
@@ -592,7 +585,6 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
   }
   
   try {
-    // Validate token format first
     if (!isValidBotToken(newToken)) {
       await bot.sendMessage(chatId, '❌ Invalid bot token format\\. Please check your token from @BotFather', {
         parse_mode: 'MarkdownV2'
@@ -600,11 +592,9 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       return;
     }
 
-    // Test the token with a temporary bot instance
     const testBot = new TelegramBot(newToken, { polling: false });
     const me = await testBot.getMe();
     
-    // If the bot already exists in cloned bots, stop it first
     if (botConfig.clonedBots.has(newToken)) {
       const existingBot = botConfig.clonedBots.get(newToken);
       try {
@@ -616,7 +606,6 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       botConfig.clonedBots.delete(newToken);
     }
     
-    // Create new bot instance with proper error handling
     const clonedBot = new TelegramBot(newToken, {
       polling: {
         interval: 300,
@@ -632,7 +621,6 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       }
     });
     
-    // Set up configuration for cloned bot
     const clonedConfig = {
       botToken: newToken,
       sourceChats: [],
@@ -645,10 +633,8 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       forceSubscribe: botConfig.forceSubscribe
     };
     
-    // Set up event handlers for the cloned bot
     setupBotEventHandlers(clonedBot, clonedConfig);
     
-    // Add specific error handler for cloned bot
     let retryCount = 0;
     const maxRetries = 5;
     clonedBot.on('polling_error', async (error) => {
@@ -681,7 +667,6 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       }
     });
     
-    // Store the cloned bot
     botConfig.clonedBots.set(newToken, {
       bot: clonedBot,
       config: clonedConfig,
@@ -690,7 +675,6 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       createdAt: new Date()
     });
     
-    // Send success message with properly escaped markdown
     const ownerName = msg.from.username 
       ? '@' + escapeMarkdown(msg.from.username)
       : escapeMarkdown(msg.from.first_name);
@@ -707,14 +691,12 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
       disable_web_page_preview: true
     });
     
-    // Log cloning event
     if (botConfig.logChannel) {
       await bot.sendMessage(botConfig.logChannel, 
         'New bot cloned:\nOwner: ' + msg.from.id + ' (@' + (msg.from.username || 'N/A') + ')\nBot: @' + me.username
       );
     }
     
-    // Save updated configuration
     saveConfig();
     
   } catch (error) {
@@ -741,18 +723,15 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
   const chatId = msg.chat.id;
   const message = match[1];
   
-  // Check if user is admin
   if (!botConfig.admins.includes(msg.from.id)) {
-    return; // Silently ignore for non-admins
+    return;
   }
   
-  // Check force subscribe first
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
   
   try {
-    // Get list of all users who have interacted with the bot
     const users = new Set();
     for (const sourceChat of botConfig.sourceChats) {
       if (sourceChat > 0) users.add(sourceChat);
@@ -764,7 +743,6 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     let sent = 0;
     let failed = 0;
     
-    // Send message to all users
     for (const userId of users) {
       try {
         await bot.sendMessage(userId, message, {
@@ -773,19 +751,14 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
         });
         sent++;
       } catch (error) {
-        // Fix: Use string concatenation instead of template literal
         logger.error('Failed to send broadcast to ' + userId + ':', error);
         failed++;
       }
       
-      // Add delay to avoid hitting rate limits
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    // Send summary to admin
-    const // Send summary to admin
-    const summary = 
-      '📢 *Broadcast Summary*\n\n' +
+    const summary = '📢 *Broadcast Summary*\n\n' +
       '• Total Users: ' + users.size + '\n' +
       '• Successfully Sent: ' + sent + '\n' +
       '• Failed: ' + failed;
@@ -794,14 +767,12 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
       parse_mode: 'Markdown'
     });
     
-    // Log broadcast event
     if (botConfig.logChannel) {
       await bot.sendMessage(botConfig.logChannel,
         'Broadcast sent by ' + msg.from.id + ' (@' + (msg.from.username || 'N/A') + ')\n' +
         'Total: ' + users.size + '\nSuccess: ' + sent + '\nFailed: ' + failed
       );
     }
-    
   } catch (error) {
     logger.error('Broadcast error:', error);
     await bot.sendMessage(chatId, '❌ An error occurred while sending the broadcast. Please try again.');
@@ -837,7 +808,7 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// Modified polling error handler for Railway
+// Modified polling error handler
 let retryCount = 0;
 const maxRetries = 10;
 const baseDelay = 1000;
