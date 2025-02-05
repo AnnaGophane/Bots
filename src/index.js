@@ -1,4 +1,3 @@
-// Import required modules
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
@@ -766,7 +765,6 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     let failed = 0;
     
     // Send message to all users
-     // Send message to all users
     for (const userId of users) {
       try {
         await bot.sendMessage(userId, message, {
@@ -785,6 +783,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     }
     
     // Send summary to admin
+    const // Send summary to admin
     const summary = 
       '📢 *Broadcast Summary*\n\n' +
       '• Total Users: ' + users.size + '\n' +
