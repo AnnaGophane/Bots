@@ -1,0 +1,16 @@
+{
+  "botToken": "",
+  "sourceChats": [],
+  "destinationChats": [],
+  "filters": {
+    "keywords": [],
+    "types": []
+  },
+  "rateLimit": {
+    "maxMessages": 10,
+    "timeWindow": 60
+  },
+  "admins": [],
+  "logChannel": "",
+  "forceSubscribe": []
+}
