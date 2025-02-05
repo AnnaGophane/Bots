@@ -763,7 +763,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     
     let sent = 0;
     let failed = 0;
-    
+     ```javascript
     // Send message to all users
     for (const userId of users) {
       try {
@@ -773,7 +773,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
         });
         sent++;
       } catch (error) {
-        logger.error('Failed to send broadcast to ' + userId + ':', error);
+        logger.error(`Failed to send broadcast to ${userId}:`, error);
         failed++;
       }
       
@@ -788,7 +788,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
       `• Successfully Sent: ${sent}\n` +
       `• Failed: ${failed}`;
     
-    await bot.sendMessage( await bot.sendMessage(chatId, summary, {
+    await bot.sendMessage(chatId, summary, {
       parse_mode: 'Markdown'
     });
     
@@ -937,3 +937,4 @@ process.on('SIGTERM', async () => {
 // Initialize the bot
 setupBotCommands();
 logger.info('Bot started successfully');
+```
