@@ -30,19 +30,20 @@ if (!process.env.BOT_TOKEN) {
   process.exit(1);
 }
 
-// Initialize bot with proper options
+// Initialize bot with improved polling options
 const bot = new TelegramBot(process.env.BOT_TOKEN, {
   polling: {
-    interval: 300,
+    interval: 1000,
     autoStart: true,
     params: {
-      timeout: 10
+      timeout: 30,
+      allowed_updates: ['message', 'callback_query', 'chat_member']
     }
   },
   request: {
-    timeout: 15000,
-    retry: 5,
-    connect_timeout: 5000
+    timeout: 30000,
+    retry: 3,
+    connect_timeout: 10000
   }
 });
 
@@ -82,7 +83,7 @@ function escapeMarkdown(text) {
   return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 }
 
-// Add force subscribe check function
+// Add force subscribe check function with improved channel validation
 async function checkForceSubscribe(msg, botInstance, config) {
   const userId = msg.from.id;
   const requiredChannels = config.forceSubscribe || [];
@@ -100,19 +101,31 @@ async function checkForceSubscribe(msg, botInstance, config) {
         notSubscribed.push({
           id: channelId,
           username: chat.username,
-          title: chat.title
+          title: chat.title || chat.username || channelId
         });
       }
     } catch (error) {
       logger.error('Force subscribe check error:', error);
+      // Add channel to not subscribed list even if there's an error
+      notSubscribed.push({
+        id: channelId,
+        username: null,
+        title: channelId
+      });
     }
   }
   
   if (notSubscribed.length > 0) {
-    const buttons = notSubscribed.map(channel => [{
-      text: `📢 Join ${channel.title || channel.username || channel.id}`,
-      url: `https://t.me/${channel.username}`
-    }]);
+    const buttons = [];
+    
+    for (const channel of notSubscribed) {
+      if (channel.username) {
+        buttons.push([{
+          text: `📢 Join ${channel.title}`,
+          url: `https://t.me/${channel.username}`
+        }]);
+      }
+    }
     
     buttons.push([{ text: '🔄 Check Subscription', callback_data: 'check_subscription' }]);
     
@@ -146,7 +159,13 @@ bot.onText(/^\/start$/, async (msg) => {
     `• /list\\_sources \\- List all source chats\n` +
     `• /list\\_destinations \\- List all destination chats\n` +
     `• /status \\- Check bot status\n` +
-    `• /help \\- Show all commands\n\n`;
+    `• /help \\- Show all commands\n\n` +
+    (botConfig.admins.includes(msg.from.id) ? 
+      `*Admin Commands:*\n` +
+      `• /add\\_sources \\- Add source chats\n` +
+      `• /add\\_destinations \\- Add destination chats\n` +
+      `• /broadcast \\- Send message to all users\n` +
+      `Type /help for more admin commands\n\n` : '');
 
   await bot.sendMessage(chatId, welcomeMessage, { 
     parse_mode: 'MarkdownV2',
@@ -176,17 +195,18 @@ bot.onText(/^\/help$/, async (msg) => {
     '• /help \\- Show this message\n\n' +
     (isAdmin ? 
       '*Admin Commands:*\n' +
-      '• /clone [token] \\- Create your own bot\n' +
-      '• /broadcast [message] \\- Send message to all users\n' +
       '• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n' +
       '• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n' +
       '• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n' +
       '• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n' +
       '• /clear\\_sources \\- Remove all source chats\n' +
-      '• /clear\\_destinations \\- Remove all destination chats\n\n' +
+      '• /clear\\_destinations \\- Remove all destination chats\n' +
+      '• /broadcast [message] \\- Send message to all users\n' +
+      '• /clone [token] \\- Create your own bot\n\n' +
       '*Examples:*\n' +
       '• /add\\_sources \\-100123456789 \\-100987654321\n' +
-      '• /add\\_destinations \\-100123456789 \\-100987654321\n' : '');
+      '• /add\\_destinations \\-100123456789 \\-100987654321\n' +
+      '• /broadcast Hello everyone\\!\n' : '');
 
   await bot.sendMessage(chatId, helpText, { 
     parse_mode: 'MarkdownV2',
@@ -207,6 +227,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
   
   if (requiresAdmin && !isAdmin) {
+    await botInstance.sendMessage(chatId, '❌ This command is only available for administrators.');
     return;
   }
 
@@ -567,6 +588,7 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
   const newToken = match[1]?.trim();
   
   if (!botConfig.admins.includes(msg.from.id)) {
+    await bot.sendMessage(chatId, '❌ This command is only available for administrators.');
     return;
   }
   
@@ -608,16 +630,17 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
     
     const clonedBot = new TelegramBot(newToken, {
       polling: {
-        interval: 300,
+        interval: 1000,
         autoStart: true,
         params: {
-          timeout: 10
+          timeout: 30,
+          allowed_updates: ['message', 'callback_query', 'chat_member']
         }
       },
       request: {
-        timeout: 15000,
-        retry: 5,
-        connect_timeout: 5000
+        timeout: 30000,
+        retry: 3,
+        connect_timeout: 10000
       }
     });
     
@@ -724,6 +747,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
   const message = match[1];
   
   if (!botConfig.admins.includes(msg.from.id)) {
+    await bot.sendMessage(chatId, '❌ This command is only available for administrators.');
     return;
   }
   
@@ -736,7 +760,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
     for (const sourceChat of botConfig.sourceChats) {
       if (sourceChat > 0) users.add(sourceChat);
     }
-    for (const destChat of botConfig.destinationChats) {
+    for (const const destChat of botConfig.destinationChats) {
       if (destChat > 0) users.add(destChat);
     }
     
@@ -781,7 +805,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
 
 // Add callback query handler for subscription check button
 bot.on('callback_query', async (query) => {
-  if (query.data === ' check_subscription') {
+  if (query.data === 'check_subscription') {
     const subscribed = await checkForceSubscribe(query.message, bot, botConfig);
     
     if (subscribed) {
@@ -808,7 +832,7 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// Modified polling error handler
+// Modified polling error handler with improved reconnection logic
 let retryCount = 0;
 const maxRetries = 10;
 const baseDelay = 1000;
