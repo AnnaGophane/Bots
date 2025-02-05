@@ -781,8 +781,7 @@ bot.onText(/^\/broadcast\s+(.+)$/, async (msg, match) => {
 
 // Add callback query handler for subscription check button
 bot.on('callback_query', async (query) => {
-  if (query.data === 'check_subscription') {
-    const subscribed = await checkForceSubscribe(query.message, bot, botConfig);
+  if (query.data === 'check_subscription') { <boltAction type="file" filePath="index.js">    const subscribed = await checkForceSubscribe(query.message, bot, botConfig);
     
     if (subscribed) {
       await bot.answerCallbackQuery(query.id, {
