@@ -1,5 +1,5 @@
 BOT_TOKEN=your_bot_token_here
-ADMIN_USERS=[5321385511]
+ADMIN_USERS=[]
 SOURCE_CHATS=[]
 DESTINATION_CHATS=[]
 FILTER_KEYWORDS=["important","announcement","news","update"]
@@ -7,4 +7,4 @@ FILTER_TYPES=["text","photo","video","document"]
 RATE_LIMIT_MAX=10
 RATE_LIMIT_WINDOW=60
 LOG_CHANNEL=
-FORCE_SUBSCRIBE=["@rdx_movie_zone"]
+FORCE_SUBSCRIBE=[]
