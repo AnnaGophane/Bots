@@ -26,7 +26,6 @@ if (!process.env.BOT_TOKEN) {
 
 // Helper function to validate bot token format
 function isValidBotToken(token) {
-  // Improved regex for bot token validation
   const tokenRegex = /^\d+:[A-Za-z0-9_-]{35,}$/;
   return tokenRegex.test(token.trim());
 }
@@ -251,8 +250,7 @@ bot.onText(/^\/start$/, async (msg) => {
     `• Add multiple sources:\n` +
     `/add\\_sources \\-100123456789 \\-100987654321\n\n` +
     `• Add multiple destinations:\n` +
-    `/add\\_destinations \\-100123456789 \\-100987654321\n\n` +
-    `Note: Some commands require admin privileges\\.`;
+    `/add\\_destinations \\-100123456789 \\-100987654321`;
 
   await bot.sendMessage(chatId, welcomeMessage, { 
     parse_mode: 'MarkdownV2',
@@ -431,91 +429,6 @@ bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
     await bot.sendMessage(chatId, errorMessage, {
       parse_mode: 'MarkdownV2'
     });
-  }
-});
-
-// Broadcast command with improved error handling
-bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const message = match[1]?.trim();
-
-  // Check force subscribe first
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-
-  // Check if user is admin
-  if (!botConfig.admins.includes(msg.from.id)) {
-    await bot.sendMessage(chatId, '⚠️ This command requires admin privileges.');
-    return;
-  }
-
-  if (!message) {
-    await bot.sendMessage(chatId, 
-      'Please provide a message to broadcast.\n' +
-      'Format: /broadcast Your message here'
-    );
-    return;
-  }
-
-  try {
-    let successCount = 0;
-    let failCount = 0;
-
-    // Get unique users from both source and destination chats
-    const uniqueUsers = new Set([...botConfig.sourceChats, ...botConfig.destinationChats]);
-    
-    // Send status message
-    const statusMsg = await bot.sendMessage(chatId, 
-      '📢 Broadcasting message...\n' +
-      `Total recipients: ${uniqueUsers.size}`
-    );
-    
-    for (const userId of uniqueUsers) {
-      try {
-        await bot.sendMessage(userId, message);
-        successCount++;
-        
-        // Update status every 10 messages
-        if (successCount % 10 === 0) {
-          await bot.editMessageText(
-            `📢 Broadcasting message...\n` +
-            `Progress: ${successCount + failCount}/${uniqueUsers.size}\n` +
-            `✅ Success: ${successCount}\n` +
-            `❌ Failed: ${failCount}`,
-            {
-              chat_id: chatId,
-              message_id: statusMsg.message_id
-            }
-          );
-        }
-      } catch (error) {
-        logger.error(`Failed to broadcast to ${userId}:`, error.message);
-        failCount++;
-      }
-    }
-
-    // Send final status
-    await bot.editMessageText(
-      `📢 Broadcast completed\n` +
-      `✅ Success: ${successCount}\n` +
-      `❌ Failed: ${failCount}`,
-      {
-        chat_id: chatId,
-        message_id: statusMsg.message_id
-      }
-    );
-
-    if (botConfig.logChannel) {
-      await bot.sendMessage(botConfig.logChannel,
-        `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
-        `Success: ${successCount}\nFailed: ${failCount}\n` +
-        `Message: ${message}`
-      );
-    }
-  } catch (error) {
-    logger.error('Broadcast error:', error);
-    await bot.sendMessage(chatId, '❌ An error occurred while broadcasting the message.');
   }
 });
 
@@ -701,14 +614,6 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
 
   // Check force subscribe first
   if (!(await checkForceSubscribe(msg, botInstance, config))) {
-    return;
-  }
-
-  const isAdmin = config.admins.includes(msg.from.id);
-  const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
-  
-  if (requiresAdmin && !isAdmin) {
-    await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges.');
     return;
   }
 
@@ -927,9 +832,70 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       }
     }
 
+    else if (text.startsWith('/broadcast')) {
+      const message = text.slice(10).trim();
+      if (!message) {
+        await botInstance.sendMessage(chatId, 
+          'Please provide a message to broadcast.\n' +
+          'Format: /broadcast Your message here'
+        );
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      const uniqueUsers = new Set([...config.sourceChats, ...config.destinationChats]);
+      
+      const statusMsg = await botInstance.sendMessage(chatId, 
+        '📢 Broadcasting message...\n' +
+        `Total recipients: ${uniqueUsers.size}`
+      );
+      
+      for (const userId of uniqueUsers) {
+        try {
+          await botInstance.sendMessage(userId, message);
+          successCount++;
+          
+          if (successCount % 10 === 0) {
+            await botInstance.editMessageText(
+              `📢 Broadcasting message...\n` +
+              `Progress: ${successCount + failCount}/${uniqueUsers.size}\n` +
+              `✅ Success: ${successCount}\n` +
+              `❌ Failed: ${failCount}`,
+              {
+                chat_id: chatId,
+                message_id: statusMsg.message_id
+              }
+            );
+          }
+        } catch (error) {
+          logger.error(`Failed to broadcast to ${userId}:`, error.message);
+          failCount++;
+        }
+      }
+
+      await botInstance.editMessageText(
+        `📢 Broadcast completed\n` +
+        `✅ Success: ${successCount}\n` +
+        `❌ Failed: ${failCount}`,
+        {
+          chat_id: chatId,
+          message_id: statusMsg.message_id
+        }
+      );
+
+      if (config.logChannel) {
+        await botInstance.sendMessage(config.logChannel,
+          `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
+          `Success: ${successCount}\nFailed: ${failCount}\n` +
+          `Message: ${message}`
+        );
+      }
+    }
+
     else if (text === '/help') {
-      const adminCommands = isAdmin ? 
-        `*Admin Commands:*\n` +
+      const helpText = `*Available Commands:*\n\n` +
         `• /clone [token] \\- Create your own bot\n` +
         `• /broadcast [message] \\- Send message to all users\n` +
         `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
@@ -937,18 +903,14 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
         `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
         `• /clear\\_sources \\- Remove all source chats\n` +
-        `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
-
-      const helpText = `*Available Commands:*\n\n` +
-        `${adminCommands}*General Commands:*\n` +
+        `• /clear\\_destinations \\- Remove all destination chats\n` +
         `• /list\\_sources \\- Show source chats\n` +
         `• /list\\_destinations \\- Show destinations\n` +
         `• /status \\- Show bot status\n` +
         `• /help \\- Show this message\n\n` +
         `*Examples:*\n` +
         `• /add\\_sources \\-100123456789 \\-100987654321\n` +
-        `• /add\\_destinations \\-100123456789 \\-100987654321\n` +
-        `${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}`;
+        `• /add\\_destinations \\-100123456789 \\-100987654321`;
 
       await botInstance.sendMessage(chatId, helpText, { 
         parse_mode: 'MarkdownV2',
@@ -975,19 +937,17 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       });
     }
   } catch (error) {
-    logger.error('Admin command error:', error);
+    logger.error('Command error:', error);
     await botInstance.sendMessage(chatId, '❌ An error occurred while processing your command. Please try again.');
   }
 }
 
 // Set up event handlers for a bot instance
 function setupBotEventHandlers(botInstance, config) {
-  // Remove any existing handlers
   botInstance.removeAllListeners('message');
   botInstance.removeAllListeners('polling_error');
   botInstance.removeAllListeners('error');
 
-  // Set up new handlers
   botInstance.on('message', async (msg) => {
     if (msg.text?.startsWith('/')) {
       await handleAdminCommands(msg, botInstance, config);
@@ -1046,7 +1006,7 @@ async function setupBotCommands() {
       { command: 'remove_destinations', description: 'Remove multiple destination chats' },
       { command: 'clear_sources', description: 'Remove all source chats' },
       { command: 'clear_destinations', description: 'Remove all destination chats' },
-      { command: 'broadcast', description: 'Send message to all users (Admin only)' },
+      { command: 'broadcast', description: 'Send message to all users' },
       { command: 'status', description: 'Show bot status' },
       { command: 'help', description: 'Show help message' }
     ]);
