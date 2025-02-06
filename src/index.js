@@ -56,8 +56,57 @@ try {
     },
     admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
     clonedBots: new Map(),
-    logChannel: process.env.LOG_CHANNEL || ''
+    logChannel: process.env.LOG_CHANNEL || '',
+    forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
   };
+}
+
+// Add force subscribe check function
+async function checkForceSubscribe(msg, botInstance, config) {
+  const userId = msg.from.id;
+  const requiredChannels = config.forceSubscribe || [];
+  
+  if (!requiredChannels.length) return true;
+  
+  let notSubscribed = [];
+  
+  for (const channelId of requiredChannels) {
+    try {
+      const member = await botInstance.getChatMember(channelId, userId);
+      const chat = await botInstance.getChat(channelId);
+      
+      if (!['member', 'administrator', 'creator'].includes(member.status)) {
+        notSubscribed.push({
+          id: channelId,
+          username: chat.username,
+          title: chat.title
+        });
+      }
+    } catch (error) {
+      logger.error('Force subscribe check error:', error);
+    }
+  }
+  
+  if (notSubscribed.length > 0) {
+    const buttons = notSubscribed.map(channel => [{
+      text: `📢 Join ${channel.title || channel.username || channel.id}`,
+      url: `https://t.me/${channel.username}`
+    }]);
+    
+    buttons.push([{ text: '🔄 Check Subscription', callback_data: 'check_subscription' }]);
+    
+    await botInstance.sendMessage(msg.chat.id,
+      `⚠️ *Please join our channel${notSubscribed.length > 1 ? 's' : ''} to use this bot\\!*\n\n` +
+      `Click the button${notSubscribed.length > 1 ? 's' : ''} below to join:`, {
+      parse_mode: 'MarkdownV2',
+      reply_markup: {
+        inline_keyboard: buttons
+      }
+    });
+    return false;
+  }
+  
+  return true;
 }
 
 // Initialize bot with improved error handling and retry logic
@@ -75,7 +124,7 @@ try {
       autoStart: true,
       params: {
         timeout: 30,
-        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post'],
+        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
         offset: -1
       }
     },
@@ -103,6 +152,38 @@ try {
   process.exit(1);
 }
 
+// Add callback query handler for subscription check button
+bot.on('callback_query', async (query) => {
+  if (query.data === 'check_subscription') {
+    const subscribed = await checkForceSubscribe(query.message, bot, botConfig);
+    
+    if (subscribed) {
+      await bot.answerCallbackQuery(query.id, {
+        text: '✅ Thank you for subscribing! You can now use the bot.',
+        show_alert: true
+      });
+      
+      // Delete the subscription message
+      await bot.deleteMessage(query.message.chat.id, query.message.message_id);
+      
+      // Send the welcome message again
+      const startMessage = {
+        text: '/start',
+        from: query.from,
+        chat: query.message.chat
+      };
+      
+      // Trigger start command
+      bot.emit('message', startMessage);
+    } else {
+      await bot.answerCallbackQuery(query.id, {
+        text: '❌ Please join all required channels first!',
+        show_alert: true
+      });
+    }
+  }
+});
+
 // Enhanced polling error handler with improved reconnection logic
 let retryCount = 0;
 const maxRetries = 10;
@@ -110,12 +191,8 @@ const baseDelay = 2000;
 let isReconnecting = false;
 
 bot.on('polling_error', async (error) => {
-  // Ignore EFATAL errors as they are usually temporary
-  if (error.message.includes('EFATAL')) {
-    return;
-  }
+  if (error.message.includes('EFATAL')) return;
   
-  // Avoid multiple reconnection attempts
   if (isReconnecting) return;
   
   logger.error('Polling error:', error.message);
@@ -149,6 +226,11 @@ bot.on('polling_error', async (error) => {
 bot.onText(/^\/start$/, async (msg) => {
   const chatId = msg.chat.id;
   const username = escapeMarkdown(msg.from.username || msg.from.first_name);
+  
+  // Check force subscribe first
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
   
   const welcomeMessage = 
     `Welcome ${username}\\! 🤖\n\n` +
@@ -185,9 +267,24 @@ bot.onText(/^\/start$/, async (msg) => {
 });
 
 // Clone bot command with improved error handling and validation
-bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
+bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const newToken = match[1].trim();
+  const newToken = match[1]?.trim();
+  
+  // Check force subscribe first
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  if (!newToken) {
+    await bot.sendMessage(chatId, 
+      '❌ Please provide a bot token\\.\n' +
+      'Format: `/clone YOUR_BOT_TOKEN`\n\n' +
+      'Get a token from @BotFather', {
+      parse_mode: 'MarkdownV2'
+    });
+    return;
+  }
   
   try {
     // Validate token format first
@@ -207,7 +304,7 @@ bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
       const existingBot = botConfig.clonedBots.get(newToken);
       try {
         await existingBot.bot.stopPolling();
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for polling to stop
+        await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (error) {
         logger.error('Error stopping existing bot:', error);
       }
@@ -221,7 +318,7 @@ bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
         autoStart: true,
         params: {
           timeout: 30,
-          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post'],
+          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
           offset: -1
         }
       },
@@ -242,7 +339,8 @@ bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
       rateLimit: { ...botConfig.rateLimit },
       admins: [msg.from.id],
       owner: msg.from.id,
-      logChannel: botConfig.logChannel
+      logChannel: botConfig.logChannel,
+      forceSubscribe: [...botConfig.forceSubscribe]
     };
     
     // Set up event handlers for the cloned bot
@@ -254,7 +352,6 @@ bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
     clonedBot.on('polling_error', async (error) => {
       if (error.message.includes('EFATAL')) return;
       
-      // Handle conflict errors specifically
       if (error.message.includes('ETELEGRAM: 409')) {
         try {
           await clonedBot.stopPolling();
@@ -309,8 +406,8 @@ bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
     });
     
     // Log cloning event
-    if (config.logChannel) {
-      await bot.sendMessage(config.logChannel, 
+    if (botConfig.logChannel) {
+      await bot.sendMessage(botConfig.logChannel, 
         `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
       );
     }
@@ -334,6 +431,91 @@ bot.onText(/^\/clone\s+([a-zA-Z0-9:_-]{70,})$/, async (msg, match) => {
     await bot.sendMessage(chatId, errorMessage, {
       parse_mode: 'MarkdownV2'
     });
+  }
+});
+
+// Broadcast command with improved error handling
+bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const message = match[1]?.trim();
+
+  // Check force subscribe first
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+
+  // Check if user is admin
+  if (!botConfig.admins.includes(msg.from.id)) {
+    await bot.sendMessage(chatId, '⚠️ This command requires admin privileges.');
+    return;
+  }
+
+  if (!message) {
+    await bot.sendMessage(chatId, 
+      'Please provide a message to broadcast.\n' +
+      'Format: /broadcast Your message here'
+    );
+    return;
+  }
+
+  try {
+    let successCount = 0;
+    let failCount = 0;
+
+    // Get unique users from both source and destination chats
+    const uniqueUsers = new Set([...botConfig.sourceChats, ...botConfig.destinationChats]);
+    
+    // Send status message
+    const statusMsg = await bot.sendMessage(chatId, 
+      '📢 Broadcasting message...\n' +
+      `Total recipients: ${uniqueUsers.size}`
+    );
+    
+    for (const userId of uniqueUsers) {
+      try {
+        await bot.sendMessage(userId, message);
+        successCount++;
+        
+        // Update status every 10 messages
+        if (successCount % 10 === 0) {
+          await bot.editMessageText(
+            `📢 Broadcasting message...\n` +
+            `Progress: ${successCount + failCount}/${uniqueUsers.size}\n` +
+            `✅ Success: ${successCount}\n` +
+            `❌ Failed: ${failCount}`,
+            {
+              chat_id: chatId,
+              message_id: statusMsg.message_id
+            }
+          );
+        }
+      } catch (error) {
+        logger.error(`Failed to broadcast to ${userId}:`, error.message);
+        failCount++;
+      }
+    }
+
+    // Send final status
+    await bot.editMessageText(
+      `📢 Broadcast completed\n` +
+      `✅ Success: ${successCount}\n` +
+      `❌ Failed: ${failCount}`,
+      {
+        chat_id: chatId,
+        message_id: statusMsg.message_id
+      }
+    );
+
+    if (botConfig.logChannel) {
+      await bot.sendMessage(botConfig.logChannel,
+        `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
+        `Success: ${successCount}\nFailed: ${failCount}\n` +
+        `Message: ${message}`
+      );
+    }
+  } catch (error) {
+    logger.error('Broadcast error:', error);
+    await bot.sendMessage(chatId, '❌ An error occurred while broadcasting the message.');
   }
 });
 
@@ -517,11 +699,16 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const text = msg.text;
   const chatId = msg.chat.id;
 
+  // Check force subscribe first
+  if (!(await checkForceSubscribe(msg, botInstance, config))) {
+    return;
+  }
+
   const isAdmin = config.admins.includes(msg.from.id);
   const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
   
   if (requiresAdmin && !isAdmin) {
-    await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges\\.');
+    await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges.');
     return;
   }
 
@@ -623,7 +810,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         ? config.destinationChats.map(id => `• ${id}`).join('\n')
         : 'No destination chats configured';
       await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { 
-        parse_mode: 'Markdown',
+         parse_mode: 'Markdown',
         disable_web_page_preview: true
       });
     }
@@ -740,49 +927,12 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       }
     }
 
-    else if (text.startsWith('/broadcast') && isAdmin) {
-      const message = text.slice(10).trim();
-      if (!message) {
-        await botInstance.sendMessage(chatId, 'Please provide a message to broadcast.\nFormat: /broadcast Your message here');
-        return;
-      }
-
-      let successCount = 0;
-      let failCount = 0;
-
-      const uniqueUsers = new Set([...config.sourceChats, ...config.destinationChats]);
-      
-      for (const userId of uniqueUsers) {
-        try {
-          await botInstance.sendMessage(userId, message);
-          successCount++;
-        } catch (error) {
-          logger.error(`Failed to broadcast to ${userId}:`, error.message);
-          failCount++;
-        }
-      }
-
-      await botInstance.sendMessage(chatId, 
-        `📢 Broadcast completed\n` +
-        `✅ Success: ${successCount}\n` +
-        `❌ Failed: ${failCount}`
-      );
-
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
-          `Success: ${successCount}\nFailed: ${failCount}\n` +
-          `Message: ${message}`
-        );
-      }
-    }
-
     else if (text === '/help') {
       const adminCommands = isAdmin ? 
         `*Admin Commands:*\n` +
         `• /clone [token] \\- Create your own bot\n` +
         `• /broadcast [message] \\- Send message to all users\n` +
-        `• /add\\_sources [chat\\_id1] [chat\\_ id2] \\- Add source chats\n` +
+        `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
         `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
         `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
         `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
