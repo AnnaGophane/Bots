@@ -53,7 +53,7 @@ try {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
     },
-    admins: [], // Remove admin check to allow all users
+    admins: [],
     clonedBots: new Map(),
     logChannel: process.env.LOG_CHANNEL || '',
     forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
@@ -63,7 +63,7 @@ try {
 // Add force subscribe check function
 async function checkForceSubscribe(msg, botInstance, config) {
   const userId = msg.from?.id;
-  if (!userId) return true; // Allow if no user ID (channel posts)
+  if (!userId) return true;
   
   const requiredChannels = config.forceSubscribe || [];
   if (!requiredChannels.length) return true;
@@ -769,15 +769,14 @@ function saveConfig() {
 // Set up event handlers for main bot
 setupBotEventHandlers(bot, botConfig);
 
-// Set up bot commands with improved error handling
+// Set up bot commands
 async function setupBotCommands() {
   try {
     await bot.setMyCommands([
       { command: 'start', description: 'Start the bot and get help' },
       { command: 'clone', description: 'Clone this bot with your own token' },
-      { command: 'add_sources', description: 'Add multiple source chats' }, Continuing the code exactly where it left off:
-
-      { command: 'add_destinations', description: 'Add multiple destination chats' },
+      { command: 'add_sources', description: 'Add multiple source chats' },
+      { command: 'add_ destinations', description: 'Add multiple destination chats' },
       { command: 'list_sources', description: 'List all source chats' },
       { command: 'list_destinations', description: 'List all destination chats' },
       { command: 'remove_sources', description: 'Remove multiple source chats' },
