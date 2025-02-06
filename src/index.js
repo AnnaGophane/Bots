@@ -53,7 +53,7 @@ try {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
     },
-    admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
+    admins: [], // Remove admin check to allow all users
     clonedBots: new Map(),
     logChannel: process.env.LOG_CHANNEL || '',
     forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
@@ -62,9 +62,10 @@ try {
 
 // Add force subscribe check function
 async function checkForceSubscribe(msg, botInstance, config) {
-  const userId = msg.from.id;
-  const requiredChannels = config.forceSubscribe || [];
+  const userId = msg.from?.id;
+  if (!userId) return true; // Allow if no user ID (channel posts)
   
+  const requiredChannels = config.forceSubscribe || [];
   if (!requiredChannels.length) return true;
   
   let notSubscribed = [];
@@ -162,17 +163,14 @@ bot.on('callback_query', async (query) => {
         show_alert: true
       });
       
-      // Delete the subscription message
       await bot.deleteMessage(query.message.chat.id, query.message.message_id);
       
-      // Send the welcome message again
       const startMessage = {
         text: '/start',
         from: query.from,
         chat: query.message.chat
       };
       
-      // Trigger start command
       bot.emit('message', startMessage);
     } else {
       await bot.answerCallbackQuery(query.id, {
@@ -224,9 +222,8 @@ bot.on('polling_error', async (error) => {
 // Welcome message handler with improved formatting
 bot.onText(/^\/start$/, async (msg) => {
   const chatId = msg.chat.id;
-  const username = escapeMarkdown(msg.from.username || msg.from.first_name);
+  const username = escapeMarkdown(msg.from?.username || msg.from?.first_name || 'User');
   
-  // Check force subscribe first
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
@@ -259,176 +256,8 @@ bot.onText(/^\/start$/, async (msg) => {
   
   if (botConfig.logChannel) {
     await bot.sendMessage(botConfig.logChannel, 
-      `New user started the bot:\nID: ${msg.from.id}\nUsername: @${msg.from.username || 'N/A'}\nName: ${msg.from.first_name} ${msg.from.last_name || ''}`
+      `New user started the bot:\nID: ${msg.from?.id}\nUsername: @${msg.from?.username || 'N/A'}\nName: ${msg.from?.first_name} ${msg.from?.last_name || ''}`
     );
-  }
-});
-
-// Clone bot command with improved error handling and validation
-bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const newToken = match[1]?.trim();
-  
-  // Check force subscribe first
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
-  if (!newToken) {
-    await bot.sendMessage(chatId, 
-      '❌ Please provide a bot token\\.\n' +
-      'Format: `/clone YOUR_BOT_TOKEN`\n\n' +
-      'Get a token from @BotFather', {
-      parse_mode: 'MarkdownV2'
-    });
-    return;
-  }
-  
-  try {
-    // Validate token format first
-    if (!isValidBotToken(newToken)) {
-      await bot.sendMessage(chatId, '❌ Invalid bot token format\\. Please check your token from @BotFather', {
-        parse_mode: 'MarkdownV2'
-      });
-      return;
-    }
-
-    // Test the token with a temporary bot instance
-    const testBot = new TelegramBot(newToken, { polling: false });
-    const me = await testBot.getMe();
-    
-    // If the bot already exists in cloned bots, stop it first
-    if (botConfig.clonedBots.has(newToken)) {
-      const existingBot = botConfig.clonedBots.get(newToken);
-      try {
-        await existingBot.bot.stopPolling();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (error) {
-        logger.error('Error stopping existing bot:', error);
-      }
-      botConfig.clonedBots.delete(newToken);
-    }
-    
-    // Create new bot instance with proper error handling
-    const clonedBot = new TelegramBot(newToken, {
-      polling: {
-        interval: 2000,
-        autoStart: true,
-        params: {
-          timeout: 30,
-          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
-          offset: -1
-        }
-      },
-      request: {
-        timeout: 30000,
-        retry: 3,
-        connect_timeout: 10000
-      },
-      webHook: false
-    });
-    
-    // Set up configuration for cloned bot
-    const clonedConfig = {
-      botToken: newToken,
-      sourceChats: [],
-      destinationChats: [],
-      filters: { ...botConfig.filters },
-      rateLimit: { ...botConfig.rateLimit },
-      admins: [msg.from.id],
-      owner: msg.from.id,
-      logChannel: botConfig.logChannel,
-      forceSubscribe: [...botConfig.forceSubscribe]
-    };
-    
-    // Set up event handlers for the cloned bot
-    setupBotEventHandlers(clonedBot, clonedConfig);
-    
-    // Add specific error handler for cloned bot
-    let retryCount = 0;
-    const maxRetries = 5;
-    clonedBot.on('polling_error', async (error) => {
-      if (error.message.includes('EFATAL')) return;
-      
-      if (error.message.includes('ETELEGRAM: 409')) {
-        try {
-          await clonedBot.stopPolling();
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          
-          if (retryCount < maxRetries) {
-            retryCount++;
-            await clonedBot.startPolling();
-            logger.info(`Restarted polling for bot @${me.username} (attempt ${retryCount})`);
-          } else {
-            const errorMsg = escapeMarkdown(`⚠️ Your cloned bot @${me.username} encountered too many conflicts. Please try cloning again later.`);
-            await bot.sendMessage(msg.from.id, errorMsg, {
-              parse_mode: 'MarkdownV2'
-            });
-            botConfig.clonedBots.delete(newToken);
-          }
-        } catch (restartError) {
-          logger.error('Failed to restart cloned bot:', restartError);
-        }
-      } else {
-        logger.error('Cloned bot error:', {
-          error: error.message,
-          botUsername: me.username
-        });
-      }
-    });
-    
-    // Store the cloned bot
-    botConfig.clonedBots.set(newToken, {
-      bot: clonedBot,
-      config: clonedConfig,
-      owner: msg.from.id,
-      username: me.username,
-      createdAt: new Date()
-    });
-    
-    // Send success message with properly escaped markdown
-    const ownerName = msg.from.username 
-      ? '@' + escapeMarkdown(msg.from.username)
-      : escapeMarkdown(msg.from.first_name);
-    
-    const successMessage = 
-      `✅ Bot cloned successfully\\!\n\n` +
-      `*Bot Details:*\n` +
-      `• Username: @${escapeMarkdown(me.username)}\n` +
-      `• Owner: ${ownerName}\n\n` +
-      `You can now use all commands with your bot\\!`;
-    
-    await bot.sendMessage(chatId, successMessage, {
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true
-    });
-    
-    // Log cloning event
-    if (botConfig.logChannel) {
-      await bot.sendMessage(botConfig.logChannel, 
-        `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
-      );
-    }
-    
-    // Save updated configuration
-    saveConfig();
-    
-  } catch (error) {
-    logger.error('Clone error:', error);
-    
-    let errorMessage = '❌ Failed to clone bot\\. ';
-    
-    if (error.message.includes('ETELEGRAM: 401')) {
-      errorMessage += 'Invalid bot token\\. Please check your token and try again\\.';
-    } else if (error.message.includes('ETELEGRAM: 409')) {
-      errorMessage += 'Bot token is already in use by another bot\\.';
-    } else {
-      errorMessage += 'Please try again later or contact support\\.';
-    }
-    
-    await bot.sendMessage(chatId, errorMessage, {
-      parse_mode: 'MarkdownV2'
-    });
   }
 });
 
@@ -449,7 +278,6 @@ function checkRateLimit(chatId) {
   recentMessages.push(now);
   messageCounter.set(chatId, recentMessages);
   
-  // Cleanup old entries
   if (recentMessages.length > botConfig.rateLimit.maxMessages * 2) {
     messageCounter.set(chatId, recentMessages.slice(-botConfig.rateLimit.maxMessages));
   }
@@ -559,26 +387,32 @@ async function cleanForwardMessage(msg, botInstance, destChat) {
 // Forward message function with improved error handling
 async function forwardMessage(msg, botInstance = bot, config = botConfig) {
   try {
-    if (!config.sourceChats.includes(msg.chat.id)) {
+    const chatId = msg.chat.id;
+    
+    // Check if this is a source chat
+    if (!config.sourceChats.includes(chatId)) {
       return;
     }
     
+    // Check message filters
     if (!matchesFilters(msg)) {
       return;
     }
     
-    if (!checkRateLimit(msg.chat.id)) {
-      logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
+    // Check rate limit
+    if (!checkRateLimit(chatId)) {
+      logger.warn(`Rate limit exceeded for chat ${chatId}`);
       return;
     }
     
+    // Forward to all destination chats
     for (const destChat of config.destinationChats) {
       const success = await cleanForwardMessage(msg, botInstance, destChat);
       
       if (success) {
         logger.info({
           event: 'message_forwarded',
-          source: msg.chat.id,
+          source: chatId,
           destination: destChat,
           messageId: msg.message_id,
           type: Object.keys(msg).find(key => 
@@ -592,7 +426,7 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
           );
           
           await botInstance.sendMessage(config.logChannel,
-            `Message forwarded:\nFrom: ${msg.chat.id}\nTo: ${destChat}\nType: ${messageType}`
+            `Message forwarded:\nFrom: ${chatId}\nTo: ${destChat}\nType: ${messageType}`
           );
         }
       }
@@ -602,7 +436,7 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
       event: 'forward_error',
       error: error.message,
       messageId: msg.message_id,
-      source: msg.chat.id
+      source: msg.chat?.id
     });
   }
 }
@@ -612,7 +446,6 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const text = msg.text;
   const chatId = msg.chat.id;
 
-  // Check force subscribe first
   if (!(await checkForceSubscribe(msg, botInstance, config))) {
     return;
   }
@@ -832,72 +665,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       }
     }
 
-    else if (text.startsWith('/broadcast')) {
-      const message = text.slice(10).trim();
-      if (!message) {
-        await botInstance.sendMessage(chatId, 
-          'Please provide a message to broadcast.\n' +
-          'Format: /broadcast Your message here'
-        );
-        return;
-      }
-
-      let successCount = 0;
-      let failCount = 0;
-
-      const uniqueUsers = new Set([...config.sourceChats, ...config.destinationChats]);
-      
-      const statusMsg = await botInstance.sendMessage(chatId, 
-        '📢 Broadcasting message...\n' +
-        `Total recipients: ${uniqueUsers.size}`
-      );
-      
-      for (const userId of uniqueUsers) {
-        try {
-          await botInstance.sendMessage(userId, message);
-          successCount++;
-          
-          if (successCount % 10 === 0) {
-            await botInstance.editMessageText(
-              `📢 Broadcasting message...\n` +
-              `Progress: ${successCount + failCount}/${uniqueUsers.size}\n` +
-              `✅ Success: ${successCount}\n` +
-              `❌ Failed: ${failCount}`,
-              {
-                chat_id: chatId,
-                message_id: statusMsg.message_id
-              }
-            );
-          }
-        } catch (error) {
-          logger.error(`Failed to broadcast to ${userId}:`, error.message);
-          failCount++;
-        }
-      }
-
-      await botInstance.editMessageText(
-        `📢 Broadcast completed\n` +
-        `✅ Success: ${successCount}\n` +
-        `❌ Failed: ${failCount}`,
-        {
-          chat_id: chatId,
-          message_id: statusMsg.message_id
-        }
-      );
-
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
-          `Success: ${successCount}\nFailed: ${failCount}\n` +
-          `Message: ${message}`
-        );
-      }
-    }
-
     else if (text === '/help') {
       const helpText = `*Available Commands:*\n\n` +
         `• /clone [token] \\- Create your own bot\n` +
-        `• /broadcast [message] \\- Send message to all users\n` +
         `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
         `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
         `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
@@ -945,15 +715,22 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
 // Set up event handlers for a bot instance
 function setupBotEventHandlers(botInstance, config) {
   botInstance.removeAllListeners('message');
+  botInstance.removeAllListeners('channel_post');
   botInstance.removeAllListeners('polling_error');
   botInstance.removeAllListeners('error');
 
+  // Handle regular messages
   botInstance.on('message', async (msg) => {
     if (msg.text?.startsWith('/')) {
       await handleAdminCommands(msg, botInstance, config);
     } else {
       await forwardMessage(msg, botInstance, config);
     }
+  });
+
+  // Handle channel posts
+  botInstance.on('channel_post', async (msg) => {
+    await forwardMessage(msg, botInstance, config);
   });
 
   botInstance.on('polling_error', (error) => {
@@ -998,7 +775,8 @@ async function setupBotCommands() {
     await bot.setMyCommands([
       { command: 'start', description: 'Start the bot and get help' },
       { command: 'clone', description: 'Clone this bot with your own token' },
-      { command: 'add_sources', description: 'Add multiple source chats' },
+      { command: 'add_sources', description: 'Add multiple source chats' }, Continuing the code exactly where it left off:
+
       { command: 'add_destinations', description: 'Add multiple destination chats' },
       { command: 'list_sources', description: 'List all source chats' },
       { command: 'list_destinations', description: 'List all destination chats' },
@@ -1006,7 +784,6 @@ async function setupBotCommands() {
       { command: 'remove_destinations', description: 'Remove multiple destination chats' },
       { command: 'clear_sources', description: 'Remove all source chats' },
       { command: 'clear_destinations', description: 'Remove all destination chats' },
-      { command: 'broadcast', description: 'Send message to all users' },
       { command: 'status', description: 'Show bot status' },
       { command: 'help', description: 'Show help message' }
     ]);
