@@ -47,10 +47,9 @@ try {
     sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
     destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
     filters: {
-      keywords: [], // Empty array to allow all messages
-      types: ["text", "photo", "video", "document", "audio", "voice", "video_note", "sticker", "location", "poll", "animation", "contact", "venue", "game", "invoice", "successful_payment", "message", "edited_message", "channel_post", "edited_channel_post", "forward"]
+      keywords: JSON.parse(process.env.FILTER_KEYWORDS || '[]'),
+      types: JSON.parse(process.env.FILTER_TYPES || '["text","photo","video","document","audio","voice","video_note","sticker","location","poll","animation"]')
     },
-    debug: true, // Enable debug logging
     rateLimit: {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
@@ -61,35 +60,6 @@ try {
     forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
   };
 }
-
-// Initialize the bot
-const bot = new Telegraf(botConfig.botToken);
-
-// Add debug logging for message type and filtering
-if (botConfig.debug) {
-  logger.info('Current filter configuration:', {
-    keywords: botConfig.filters.keywords,
-    types: botConfig.filters.types
-  });
-}
-
-// Add message handler logging
-bot.on('channel_post', (msg) => {
-  logger.info('Received message type:', {
-    hasText: !!msg.text,
-    hasPhoto: !!msg.photo,
-    hasVideo: !!msg.video,
-    hasDocument: !!msg.document,
-    hasAudio: !!msg.audio,
-    hasVoice: !!msg.voice,
-    hasVideoNote: !!msg.video_note,
-    hasSticker: !!msg.sticker,
-    hasLocation: !!msg.location,
-    hasPoll: !!msg.poll,
-    hasAnimation: !!msg.animation,
-    messageType: Object.keys(msg).filter(key => typeof msg[key] === 'object' || typeof msg[key] === 'string')[0]
-  });
-});
 
 // Launch the bot
 bot.launch().catch(err => {
