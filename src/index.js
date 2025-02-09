@@ -47,8 +47,8 @@ try {
     sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
     destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
     filters: {
-      keywords: JSON.parse(process.env.FILTER_KEYWORDS || '[]'),
-      types: JSON.parse(process.env.FILTER_TYPES || '["text","photo","video","document","audio","voice","video_note","sticker","location","poll","animation"]')
+      keywords: [], // Empty array to allow all messages
+      types: ["text", "photo", "video", "document", "audio", "voice", "video_note", "sticker", "location", "poll", "animation", "contact", "venue", "game", "invoice", "successful_payment", "message", "edited_message", "channel_post", "edited_channel_post"]
     },
     rateLimit: {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
