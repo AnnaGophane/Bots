@@ -62,6 +62,32 @@ try {
   };
 }
 
+// Add debug logging for message type and filtering
+if (botConfig.debug) {
+  logger.info('Current filter configuration:', {
+    keywords: botConfig.filters.keywords,
+    types: botConfig.filters.types
+  });
+}
+
+// Add message handler logging
+bot.on('channel_post', (msg) => {
+  logger.info('Received message type:', {
+    hasText: !!msg.text,
+    hasPhoto: !!msg.photo,
+    hasVideo: !!msg.video,
+    hasDocument: !!msg.document,
+    hasAudio: !!msg.audio,
+    hasVoice: !!msg.voice,
+    hasVideoNote: !!msg.video_note,
+    hasSticker: !!msg.sticker,
+    hasLocation: !!msg.location,
+    hasPoll: !!msg.poll,
+    hasAnimation: !!msg.animation,
+    messageType: Object.keys(msg).filter(key => typeof msg[key] === 'object' || typeof msg[key] === 'string')[0]
+  });
+});
+
 // Add debug logging for message type
 if (botConfig.debug) {
   logger.info('Current filter configuration:', {
