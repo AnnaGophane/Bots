@@ -3,6 +3,9 @@ import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
 import { readFileSync, writeFileSync } from 'fs';
+import { Telegraf } from 'telegraf';
+import { readFileSync } from 'fs';
+import { logger } from './logger.js';
 
 // Configure logger first
 const logger = createLogger({
@@ -62,6 +65,9 @@ try {
   };
 }
 
+// Initialize the bot
+const bot = new Telegraf(botConfig.botToken);
+
 // Add debug logging for message type and filtering
 if (botConfig.debug) {
   logger.info('Current filter configuration:', {
@@ -86,6 +92,12 @@ bot.on('channel_post', (msg) => {
     hasAnimation: !!msg.animation,
     messageType: Object.keys(msg).filter(key => typeof msg[key] === 'object' || typeof msg[key] === 'string')[0]
   });
+});
+
+// Launch the bot
+bot.launch().catch(err => {
+  logger.error('Error launching bot:', err);
+  process.exit(1);
 });
 
 // Add debug logging for message type
