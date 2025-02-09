@@ -1,3 +1,4 @@
+// Import required dependencies
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
@@ -384,18 +385,25 @@ async function cleanForwardMessage(msg, botInstance, destChat) {
   }
 }
 
-// Forward message function with improved error handling
+// Forward message function with improved error handling and logging
 async function forwardMessage(msg, botInstance = bot, config = botConfig) {
   try {
     const chatId = msg.chat.id;
     
+    // Debug logging
+    logger.info(`Attempting to forward message from ${chatId}`);
+    logger.info(`Source chats: ${JSON.stringify(config.sourceChats)}`);
+    logger.info(`Destination chats: ${JSON.stringify(config.destinationChats)}`);
+    
     // Check if this is a source chat
     if (!config.sourceChats.includes(chatId)) {
+      logger.info(`Chat ${chatId} is not in source chats list`);
       return;
     }
     
     // Check message filters
     if (!matchesFilters(msg)) {
+      logger.info(`Message from ${chatId} did not match filters`);
       return;
     }
     
@@ -407,28 +415,35 @@ async function forwardMessage(msg, botInstance = bot, config = botConfig) {
     
     // Forward to all destination chats
     for (const destChat of config.destinationChats) {
-      const success = await cleanForwardMessage(msg, botInstance, destChat);
-      
-      if (success) {
-        logger.info({
-          event: 'message_forwarded',
-          source: chatId,
-          destination: destChat,
-          messageId: msg.message_id,
-          type: Object.keys(msg).find(key => 
-            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
-          )
-        });
+      try {
+        logger.info(`Attempting to forward to destination ${destChat}`);
+        const success = await cleanForwardMessage(msg, botInstance, destChat);
         
-        if (config.logChannel) {
-          const messageType = Object.keys(msg).find(key => 
-            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
-          );
+        if (success) {
+          logger.info({
+            event: 'message_forwarded',
+            source: chatId,
+            destination: destChat,
+            messageId: msg.message_id,
+            type: Object.keys(msg).find(key => 
+              ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
+            )
+          });
           
-          await botInstance.sendMessage(config.logChannel,
-            `Message forwarded:\nFrom: ${chatId}\nTo: ${destChat}\nType: ${messageType}`
-          );
+          if (config.logChannel) {
+            const messageType = Object.keys(msg).find(key => 
+              ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
+            );
+            
+            await botInstance.sendMessage(config.logChannel,
+              `Message forwarded:\nFrom: ${chatId}\nTo: ${destChat}\nType: ${messageType}`
+            );
+          }
+        } else {
+          logger.error(`Failed to forward message to ${destChat}`);
         }
+      } catch (destError) {
+        logger.error(`Error forwarding to destination ${destChat}:`, destError);
       }
     }
   } catch (error) {
@@ -721,16 +736,45 @@ function setupBotEventHandlers(botInstance, config) {
 
   // Handle regular messages
   botInstance.on('message', async (msg) => {
-    if (msg.text?.startsWith('/')) {
-      await handleAdminCommands(msg, botInstance, config);
-    } else {
-      await forwardMessage(msg, botInstance, config);
+    try {
+      if (msg.text?.startsWith('/')) {
+        await handleAdminCommands(msg, botInstance, config);
+      } else {
+        await forwardMessage(msg, botInstance, config);
+      }
+    } catch (error) {
+      logger.error('Message handling error:', error);
     }
   });
 
-  // Handle channel posts
+  // Handle channel posts - CRITICAL for forwarding from channels
   botInstance.on('channel_post', async (msg) => {
-    await forwardMessage(msg, botInstance, config);
+    try {
+      // Add source chat ID check
+      const channelId = msg.chat.id;
+      logger.info(`Received channel post from ${channelId}`);
+      
+      if (config.sourceChats.includes(channelId)) {
+        logger.info(`Forwarding channel post from ${channelId} to destinations`);
+        await forwardMessage(msg, botInstance, config);
+      } else {
+        logger.info(`Channel ${channelId} is not in source chats list`);
+      }
+    } catch (error) {
+      logger.error('Channel post handling error:', error);
+    }
+  });
+
+  // Handle edited channel posts
+  botInstance.on('edited_channel_post', async (msg) => {
+    try {
+      const channelId = msg.chat.id;
+      if (config.sourceChats.includes(channelId)) {
+        await forwardMessage(msg, botInstance, config);
+      }
+    } catch (error) {
+      logger.error('Edited channel post handling error:', error);
+    }
   });
 
   botInstance.on('polling_error', (error) => {
@@ -776,7 +820,7 @@ async function setupBotCommands() {
       { command: 'start', description: 'Start the bot and get help' },
       { command: 'clone', description: 'Clone this bot with your own token' },
       { command: 'add_sources', description: 'Add multiple source chats' },
-      { command: 'add_ destinations', description: 'Add multiple destination chats' },
+      { command: 'add_destinations', description: 'Add multiple destination chats' },
       { command: 'list_sources', description: 'List all source chats' },
       { command: 'list_destinations', description: 'List all destination chats' },
       { command: 'remove_sources', description: 'Remove multiple source chats' },
