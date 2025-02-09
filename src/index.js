@@ -4,7 +4,6 @@ import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
 import { readFileSync, writeFileSync } from 'fs';
 import { Telegraf } from 'telegraf';
-import { readFileSync } from 'fs';
 import { logger } from './logger.js';
 
 // Configure logger first
