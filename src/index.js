@@ -48,8 +48,9 @@ try {
     destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
     filters: {
       keywords: [], // Empty array to allow all messages
-      types: ["text", "photo", "video", "document", "audio", "voice", "video_note", "sticker", "location", "poll", "animation", "contact", "venue", "game", "invoice", "successful_payment", "message", "edited_message", "channel_post", "edited_channel_post"]
+      types: ["text", "photo", "video", "document", "audio", "voice", "video_note", "sticker", "location", "poll", "animation", "contact", "venue", "game", "invoice", "successful_payment", "message", "edited_message", "channel_post", "edited_channel_post", "forward"]
     },
+    debug: true, // Enable debug logging
     rateLimit: {
       maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
       timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60')
@@ -61,6 +62,13 @@ try {
   };
 }
 
+// Add debug logging for message type
+if (botConfig.debug) {
+  logger.info('Current filter configuration:', {
+    keywords: botConfig.filters.keywords,
+    types: botConfig.filters.types
+  });
+}
 // Add force subscribe check function
 async function checkForceSubscribe(msg, botInstance, config) {
   const userId = msg.from?.id;
