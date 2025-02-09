@@ -3,7 +3,6 @@ import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
 import { readFileSync, writeFileSync } from 'fs';
-import { Telegraf } from 'telegraf';
 
 // Configure logger first
 const logger = createLogger({
