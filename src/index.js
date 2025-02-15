@@ -1,37 +1,76 @@
+// run `node index.js` in the terminal
+
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
 import { readFileSync, writeFileSync } from 'fs';
 
-// Configure logger
+// Configure logger with enhanced formatting
 const logger = createLogger({
   format: format.combine(
     format.timestamp(),
-    format.json()
+    format.printf(({ level, message, timestamp }) => {
+      return `${timestamp} ${level.toUpperCase()}: ${message}`;
+    })
   ),
   transports: [
-    new transports.Console(),
-    new transports.File({ filename: 'bot.log' })
+    new transports.Console({
+      format: format.combine(
+        format.colorize(),
+        format.simple()
+      )
+    }),
+    new transports.File({ 
+      filename: 'error.log',
+      level: 'error'
+    }),
+    new transports.File({ 
+      filename: 'combined.log'
+    })
   ]
 });
 
-// Load environment variables
+// Load environment variables with validation
 config();
 
-// Validate required environment variables
-if (!process.env.BOT_TOKEN) {
-  logger.error('BOT_TOKEN environment variable is required');
+// Enhanced environment variable validation
+const requiredEnvVars = ['BOT_TOKEN'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
   process.exit(1);
 }
 
-// Initialize default configuration
+// Initialize default configuration with extended options
 const defaultConfig = {
   botToken: process.env.BOT_TOKEN,
   sourceChats: [],
   destinationChats: [],
   filters: {
     keywords: [],
-    types: ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation', 'contact', 'venue', 'game', 'invoice', 'successful_payment', 'message', 'edited_message', 'channel_post', 'edited_channel_post']
+    types: [
+      'text',
+      'photo',
+      'video',
+      'document',
+      'audio',
+      'voice',
+      'video_note',
+      'sticker',
+      'location',
+      'poll',
+      'animation',
+      'contact',
+      'venue',
+      'game',
+      'invoice',
+      'successful_payment',
+      'message',
+      'edited_message',
+      'channel_post',
+      'edited_channel_post'
+    ]
   },
   rateLimit: {
     maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
@@ -40,20 +79,39 @@ const defaultConfig = {
   admins: process.env.ADMIN_USERS ? JSON.parse(process.env.ADMIN_USERS) : [],
   clonedBots: new Map(),
   logChannel: process.env.LOG_CHANNEL || '',
-  forceSubscribe: process.env.FORCE_SUBSCRIBE ? JSON.parse(process.env.FORCE_SUBSCRIBE) : []
+  forceSubscribe: process.env.FORCE_SUBSCRIBE ? JSON.parse(process.env.FORCE_SUBSCRIBE) : [],
+  messageOptions: {
+    parseMode: 'HTML',
+    disableWebPagePreview: true,
+    disableNotification: false
+  },
+  users: new Set(),
+  statistics: {
+    totalMessages: 0,
+    forwardedMessages: 0,
+    failedMessages: 0,
+    lastReset: new Date()
+  }
 };
 
-// Load or create configuration
+// Load or create configuration with error handling
 let botConfig;
 try {
   const configFile = readFileSync('./config.json', 'utf8');
+  const parsedConfig = JSON.parse(configFile);
   botConfig = {
     ...defaultConfig,
-    ...JSON.parse(configFile),
-    clonedBots: new Map(JSON.parse(configFile).clonedBots || [])
+    ...parsedConfig,
+    users: new Set(parsedConfig.users || []),
+    clonedBots: new Map(parsedConfig.clonedBots || []),
+    statistics: {
+      ...defaultConfig.statistics,
+      ...parsedConfig.statistics
+    }
   };
+  logger.info('Configuration loaded successfully');
 } catch (error) {
-  logger.info('Creating new configuration from environment variables');
+  logger.info('Creating new configuration from default settings');
   botConfig = defaultConfig;
   saveConfig();
 }
@@ -84,7 +142,13 @@ try {
       autoStart: true,
       params: {
         timeout: 30,
-        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
+        allowed_updates: [
+          'message',
+          'edited_message',
+          'channel_post',
+          'edited_channel_post',
+          'callback_query'
+        ],
         offset: -1
       }
     },
@@ -112,7 +176,28 @@ try {
   process.exit(1);
 }
 
-// Add force subscribe check function
+// Enhanced message handling middleware
+async function messageMiddleware(msg, next) {
+  try {
+    // Update statistics
+    botConfig.statistics.totalMessages++;
+    
+    // Log message details
+    logger.info(`Received message from ${msg.from.id} in chat ${msg.chat.id}`);
+    
+    // Check force subscribe
+    if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+      return;
+    }
+    
+    // Process message
+    await next(msg);
+  } catch (error) {
+    logger.error('Message middleware error:', error);
+  }
+}
+
+// Add force subscribe check function with improved validation
 async function checkForceSubscribe(msg, botInstance, config) {
   const userId = msg.from.id;
   const requiredChannels = config.forceSubscribe || [];
@@ -135,6 +220,8 @@ async function checkForceSubscribe(msg, botInstance, config) {
       }
     } catch (error) {
       logger.error('Force subscribe check error:', error);
+      // Continue checking other channels even if one fails
+      continue;
     }
   }
   
@@ -144,16 +231,21 @@ async function checkForceSubscribe(msg, botInstance, config) {
       url: `https://t.me/${channel.username}`
     }]);
     
-    buttons.push([{ text: '🔄 Check Subscription', callback_data: 'check_subscription' }]);
+    buttons.push([{ 
+      text: '🔄 Check Subscription',
+      callback_data: 'check_subscription'
+    }]);
     
     await botInstance.sendMessage(msg.chat.id,
       `⚠️ *Please join our channel${notSubscribed.length > 1 ? 's' : ''} to use this bot\\!*\n\n` +
-      `Click the button${notSubscribed.length > 1 ? 's' : ''} below to join:`, {
-      parse_mode: 'MarkdownV2',
-      reply_markup: {
-        inline_keyboard: buttons
+      `Click the button${notSubscribed.length > 1 ? 's' : ''} below to join:`,
+      {
+        parse_mode: 'MarkdownV2',
+        reply_markup: {
+          inline_keyboard: buttons
+        }
       }
-    });
+    );
     return false;
   }
   
@@ -230,21 +322,27 @@ bot.on('polling_error', async (error) => {
   }
 });
 
-// Welcome message handler with improved formatting
+// Welcome message handler with improved formatting and user tracking
 bot.onText(/^\/start$/, async (msg) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
   const username = escapeMarkdown(msg.from.username || msg.from.first_name);
   
-  // Check force subscribe first
+  // Add user to tracking
+  botConfig.users.add(userId);
+  saveConfig();
+  
+  // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
+  
+  const isAdmin = botConfig.admins.includes(userId);
   
   const welcomeMessage = 
     `Welcome ${username}\\! 🤖\n\n` +
     `I'm an Auto\\-Forward bot that can help you forward messages between multiple chats without the forwarded tag\\.\n\n` +
     `*Main Commands:*\n` +
-    `• /clone \\- Create your own bot using your token\n` +
     `• /add\\_sources \\- Add multiple source chats\n` +
     `• /add\\_destinations \\- Add multiple destination chats\n` +
     `• /list\\_sources \\- List all source chats\n` +
@@ -255,241 +353,84 @@ bot.onText(/^\/start$/, async (msg) => {
     `• /clear\\_destinations \\- Remove all destination chats\n` +
     `• /status \\- Check bot status\n` +
     `• /help \\- Show all commands\n\n` +
+    (isAdmin ? `*Admin Commands:*\n• /broadcast \\- Send message to all users\n\n` : '') +
     `*Examples:*\n` +
-    `• Add multiple sources:\n` +
-    `/add\\_sources \\-100123456789 \\-100987654321\n\n` +
-    `• Add multiple destinations:\n` +
-    `/add\\_destinations \\-100123456789 \\-100987654321\n\n` +
+    `• Add sources: /add\\_sources \\-100123456789 \\-100987654321\n` +
+    `• Add destinations: /add\\_destinations \\-100123456789 \\-100987654321\n\n` +
     `Note: Some commands require admin privileges\\.`;
-
-  await bot.sendMessage(chatId, welcomeMessage, { 
+  
+  await bot.sendMessage(chatId, welcomeMessage, {
     parse_mode: 'MarkdownV2',
-    disable_web_page_preview: true 
+    disable_web_page_preview: true
   });
   
+  // Log new user
   if (botConfig.logChannel) {
-    await bot.sendMessage(botConfig.logChannel, 
-      `New user started the bot:\nID: ${msg.from.id}\nUsername: @${msg.from.username || 'N/A'}\nName: ${msg.from.first_name} ${msg.from.last_name || ''}`
+    await bot.sendMessage(botConfig.logChannel,
+      `New user started the bot:\n` +
+      `ID: ${msg.from.id}\n` +
+      `Username: @${msg.from.username || 'N/A'}\n` +
+      `Name: ${msg.from.first_name} ${msg.from.last_name || ''}`
     );
   }
+  
+  logger.info(`New user started bot: ${userId} (@${msg.from.username || 'N/A'})`);
 });
 
-// Clone bot command with improved error handling and validation
-bot.onText(/^\/clone(?:\s+(.+))?$/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const newToken = match[1]?.trim();
-  
-  // Check force subscribe first
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
-  if (!newToken) {
-    await bot.sendMessage(chatId, 
-      '❌ Please provide a bot token\\.\n' +
-      'Format: `/clone YOUR_BOT_TOKEN`\n\n' +
-      'Get a token from @BotFather', {
-      parse_mode: 'MarkdownV2'
-    });
-    return;
-  }
-  
-  try {
-    // Validate token format first
-    if (!isValidBotToken(newToken)) {
-      await bot.sendMessage(chatId, '❌ Invalid bot token format\\. Please check your token from @BotFather', {
-        parse_mode: 'MarkdownV2'
-      });
-      return;
-    }
-
-    // Test the token with a temporary bot instance
-    const testBot = new TelegramBot(newToken, { polling: false });
-    const me = await testBot.getMe();
-    
-    // If the bot already exists in cloned bots, stop it first
-    if (botConfig.clonedBots.has(newToken)) {
-      const existingBot = botConfig.clonedBots.get(newToken);
-      try {
-        await existingBot.bot.stopPolling();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (error) {
-        logger.error('Error stopping existing bot:', error);
-      }
-      botConfig.clonedBots.delete(newToken);
-    }
-    
-    // Create new bot instance with proper error handling
-    const clonedBot = new TelegramBot(newToken, {
-      polling: {
-        interval: 2000,
-        autoStart: true,
-        params: {
-          timeout: 30,
-          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
-          offset: -1
-        }
-      },
-      request: {
-        timeout: 30000,
-        retry: 3,
-        connect_timeout: 10000
-      },
-      webHook: false
-    });
-    
-    // Set up configuration for cloned bot
-    const clonedConfig = {
-      botToken: newToken,
-      sourceChats: [],
-      destinationChats: [],
-      filters: { ...botConfig.filters },
-      rateLimit: { ...botConfig.rateLimit },
-      admins: [msg.from.id],
-      owner: msg.from.id,
-      logChannel: botConfig.logChannel,
-      forceSubscribe: [...botConfig.forceSubscribe]
-    };
-    
-    // Set up event handlers for the cloned bot
-    setupBotEventHandlers(clonedBot, clonedConfig);
-    
-    // Add specific error handler for cloned bot
-    let retryCount = 0;
-    const maxRetries = 5;
-    clonedBot.on('polling_error', async (error) => {
-      if (error.message.includes('EFATAL')) return;
-      
-      if (error.message.includes('ETELEGRAM: 409')) {
-        try {
-          await clonedBot.stopPolling();
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          
-          if (retryCount < maxRetries) {
-            retryCount++;
-            await clonedBot.startPolling();
-            logger.info(`Restarted polling for bot @${me.username} (attempt ${retryCount})`);
-          } else {
-            const errorMsg = escapeMarkdown(`⚠️ Your cloned bot @${me.username} encountered too many conflicts. Please try cloning again later.`);
-            await bot.sendMessage(msg.from.id, errorMsg, {
-              parse_mode: 'MarkdownV2'
-            });
-            botConfig.clonedBots.delete(newToken);
-          }
-        } catch (restartError) {
-          logger.error('Failed to restart cloned bot:', restartError);
-        }
-      } else {
-        logger.error('Cloned bot error:', {
-          error: error.message,
-          botUsername: me.username
-        });
-      }
-    });
-    
-    // Store the cloned bot
-    botConfig.clonedBots.set(newToken, {
-      bot: clonedBot,
-      config: clonedConfig,
-      owner: msg.from.id,
-      username: me.username,
-      createdAt: new Date()
-    });
-    
-    // Send success message with properly escaped markdown
-    const ownerName = msg.from.username 
-      ? '@' + escapeMarkdown(msg.from.username)
-      : escapeMarkdown(msg.from.first_name);
-    
-    const successMessage = 
-      `✅ Bot cloned successfully\\!\n\n` +
-      `*Bot Details:*\n` +
-      `• Username: @${escapeMarkdown(me.username)}\n` +
-      `• Owner: ${ownerName}\n\n` +
-      `You can now use all commands with your bot\\!`;
-    
-    await bot.sendMessage(chatId, successMessage, {
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true
-    });
-    
-    // Log cloning event
-    if (botConfig.logChannel) {
-      await bot.sendMessage(botConfig.logChannel, 
-        `New bot cloned:\nOwner: ${msg.from.id} (@${msg.from.username || 'N/A'})\nBot: @${me.username}`
-      );
-    }
-    
-    // Save updated configuration
-    saveConfig();
-    
-  } catch (error) {
-    logger.error('Clone error:', error);
-    
-    let errorMessage = '❌ Failed to clone bot\\. ';
-    
-    if (error.message.includes('ETELEGRAM: 401')) {
-      errorMessage += 'Invalid bot token\\. Please check your token and try again\\.';
-    } else if (error.message.includes('ETELEGRAM: 409')) {
-      errorMessage += 'Bot token is already in use by another bot\\.';
-    } else {
-      errorMessage += 'Please try again later or contact support\\.';
-    }
-    
-    await bot.sendMessage(chatId, errorMessage, {
-      parse_mode: 'MarkdownV2'
-    });
-  }
-});
-
-// Broadcast command with improved error handling
+// Broadcast command with improved error handling and progress tracking
 bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const message = match[1]?.trim();
-
-  // Check force subscribe first
+  const userId = msg.from.id;
+  const message = match?.[1]?.trim();
+  
+  // Check if user is admin
+  if (!botConfig.admins.includes(userId)) {
+    await bot.sendMessage(chatId, '⚠️ This command is only available for administrators.');
+    logger.warn(`Non-admin user ${userId} attempted to use broadcast command`);
+    return;
+  }
+  
+  // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
-
-  // Check if user is admin
-  if (!botConfig.admins.includes(msg.from.id)) {
-    return;
-  }
-
+  
   if (!message) {
-    await bot.sendMessage(chatId, 
-      'Please provide a message to broadcast.\n' +
-      'Format: /broadcast Your message here'
+    await bot.sendMessage(chatId,
+      '❌ Please provide a message to broadcast.\n' +
+      'Format: `/broadcast Your message here`',
+      { parse_mode: 'MarkdownV2' }
     );
     return;
   }
-
+  
   try {
     let successCount = 0;
     let failCount = 0;
-
-    // Get unique users from both source and destination chats
-    const uniqueUsers = new Set([...botConfig.sourceChats, ...botConfig.destinationChats]);
+    const total = botConfig.users.size;
     
-    // Send status message
-    const statusMsg = await bot.sendMessage(chatId, 
+    // Send initial status message
+    const statusMsg = await bot.sendMessage(chatId,
       '📢 Broadcasting message...\n' +
-      `Total recipients: ${uniqueUsers.size}`
+      `Total recipients: ${total}`
     );
     
-    for (const userId of uniqueUsers) {
+    const startTime = Date.now();
+    
+    for (const recipientId of botConfig.users) {
       try {
-        await bot.sendMessage(userId, message);
+        await bot.sendMessage(recipientId, message);
         successCount++;
         
         // Update status every 10 messages
         if (successCount % 10 === 0) {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
           await bot.editMessageText(
-            `📢 Broadcasting message...\n` +
-            `Progress: ${successCount + failCount}/${uniqueUsers.size}\n` +
-            `✅ Success: ${successCount}\n` +
-            `❌ Failed: ${failCount}`,
+            `📢 Broadcasting...\n` +
+            `Progress: ${successCount + failCount}/${total}\n` +
+            `✅ Sent: ${successCount}\n` +
+            `❌ Failed: ${failCount}\n` +
+            `⏱ Elapsed: ${elapsed}s`,
             {
               chat_id: chatId,
               message_id: statusMsg.message_id
@@ -497,34 +438,499 @@ bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
           );
         }
       } catch (error) {
-        logger.error(`Failed to broadcast to ${userId}:`, error.message);
         failCount++;
+        logger.error(`Broadcast failed for ${recipientId}:`, error.message);
       }
     }
-
+    
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    
     // Send final status
     await bot.editMessageText(
       `📢 Broadcast completed\n` +
-      `✅ Success: ${successCount}\n` +
-      `❌ Failed: ${failCount}`,
+      `✅ Successful: ${successCount}\n` +
+      `❌ Failed: ${failCount}\n` +
+      `⏱ Total time: ${elapsed}s`,
       {
         chat_id: chatId,
         message_id: statusMsg.message_id
       }
     );
-
+    
+    // Log broadcast results
     if (botConfig.logChannel) {
       await bot.sendMessage(botConfig.logChannel,
-        `Broadcast sent by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
-        `Success: ${successCount}\nFailed: ${failCount}\n` +
+        `Broadcast completed:\n` +
+        `Sent by: ${userId} (@${msg.from.username || 'N/A'})\n` +
+        `Success: ${successCount}\n` +
+        `Failed: ${failCount}\n` +
+        `Time taken: ${elapsed}s\n` +
         `Message: ${message}`
       );
     }
+    
+    logger.info(`Broadcast completed - Success: ${successCount}, Failed: ${failCount}, Time: ${elapsed}s`);
   } catch (error) {
     logger.error('Broadcast error:', error);
     await bot.sendMessage(chatId, '❌ An error occurred while broadcasting the message.');
   }
 });
+
+// Add sources command with improved validation and error handling
+bot.onText(/^\/add_sources(?:\s+(.+))?$/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const sourceIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  if (sourceIds.length === 0) {
+    await bot.sendMessage(chatId,
+      '❌ Please provide valid chat IDs.\n' +
+      'Format: `/add_sources -100123456789 -100987654321`',
+      { parse_mode: 'MarkdownV2' }
+    );
+    return;
+  }
+  
+  let added = 0;
+  let invalid = 0;
+  let existing = 0;
+  
+  for (const id of sourceIds) {
+    if (isNaN(id)) {
+      invalid++;
+      continue;
+    }
+    
+    try {
+      // Verify chat exists and bot has access
+      await bot.getChat(id);
+      
+      if (!botConfig.sourceChats.includes(id)) {
+        botConfig.sourceChats.push(id);
+        added++;
+      } else {
+        existing++;
+      }
+    } catch (error) {
+      logger.error(`Failed to verify chat ${id}:`, error.message);
+      invalid++;
+    }
+  }
+  
+  saveConfig();
+  
+  const message = [
+    added > 0 ? `✅ Added ${added} source chat${added !== 1 ? 's' : ''}` : '',
+    existing > 0 ? `\n⚠️ ${existing} chat${existing !== 1 ? 's' : ''} already added` : '',
+    invalid > 0 ? `\n❌ ${invalid} invalid ID${invalid !== 1 ? 's' : ''} skipped` : ''
+  ].filter(Boolean).join('');
+  
+  await bot.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+  
+  // Log changes
+  if (botConfig.logChannel && added > 0) {
+    await bot.sendMessage(botConfig.logChannel,
+      `Sources added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+      `Added: ${added}\n` +
+      `Existing: ${existing}\n` +
+      `Invalid: ${invalid}`
+    );
+  }
+  
+  logger.info(`Sources added - Added: ${added}, Existing: ${existing}, Invalid: ${invalid}`);
+});
+
+// Add destinations command with improved validation and error handling
+bot.onText(/^\/add_destinations(?:\s+(.+))?$/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const destIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  if (destIds.length === 0) {
+    await bot.sendMessage(chatId,
+      '❌ Please provide valid chat IDs.\n' +
+      'Format: `/add_destinations -100123456789 -100987654321`',
+      { parse_mode: 'MarkdownV2' }
+    );
+    return;
+  }
+  
+  let added = 0;
+  let invalid = 0;
+  let existing = 0;
+  
+  for (const id of destIds) {
+    if (isNaN(id)) {
+      invalid++;
+      continue;
+    }
+    
+    try {
+      // Verify chat exists and bot has access
+      await bot.getChat(id);
+      
+      if (!botConfig.destinationChats.includes(id)) {
+        botConfig.destinationChats.push(id);
+        added++;
+      } else {
+        existing++;
+      }
+    } catch (error) {
+      logger.error(`Failed to verify chat ${id}:`, error.message);
+      invalid++;
+    }
+  }
+  
+  saveConfig();
+  
+  const message = [
+    added > 0 ? `✅ Added ${added} destination chat${added !== 1 ? 's' : ''}` : '',
+    existing > 0 ? `\n⚠️ ${existing} chat${existing !== 1 ? 's' : ''} already added` : '',
+    invalid > 0 ? `\n❌ ${invalid} invalid ID${invalid !== 1 ? 's' : ''} skipped` : ''
+  ].filter(Boolean).join('');
+  
+  await bot.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+  
+  // Log changes
+  if (botConfig.logChannel && added > 0) {
+    await bot.sendMessage(botConfig.logChannel,
+      `Destinations added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+      `Added: ${added}\n` +
+      `Existing: ${existing}\n` +
+      `Invalid: ${invalid}`
+    );
+  }
+  
+  logger.info(`Destinations added - Added: ${added}, Existing: ${existing}, Invalid: ${invalid}`);
+});
+
+// List sources command with improved formatting
+bot.onText(/^\/list_sources$/, async (msg) => {
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  const sources = botConfig.sourceChats.length > 0
+    ? botConfig.sourceChats.map(id => `• ${id}`).join('\n')
+    : 'No source chats configured';
+  
+  const message = 
+    `📋 *Source Chats*\n\n` +
+    `${sources}\n\n` +
+    `Total: ${botConfig.sourceChats.length}`;
+  
+  await bot.sendMessage(msg.chat.id, message, {
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true
+  });
+});
+
+// List destinations command with improved formatting
+bot.onText(/^\/list_destinations$/, async (msg) => {
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  const destinations = botConfig.destinationChats.length > 0
+    ? botConfig.destinationChats.map(id => `• ${id}`).join('\n')
+    : 'No destination chats configured';
+  
+  const message = 
+    `📋 *Destination Chats*\n\n` +
+    `${destinations}\n\n` +
+    `Total: ${botConfig.destinationChats.length}`;
+  
+  await bot.sendMessage(msg.chat.id, message, {
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true
+  });
+});
+
+// Remove sources command with improved validation
+bot.onText(/^\/remove_sources(?:\s+(.+))?$/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const sourceIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  if (sourceIds.length === 0) {
+    await bot.sendMessage(chatId,
+      '❌ Please provide source chat IDs to remove.\n' +
+      'Format: `/remove_sources chatId1 chatId2 ...`',
+      { parse_mode: 'MarkdownV2' }
+    );
+    return;
+  }
+  
+  let removed = 0;
+  let notFound = 0;
+  let invalid = 0;
+  
+  for (const sourceId of sourceIds) {
+    if (isNaN(sourceId)) {
+      invalid++;
+    } else if (botConfig.sourceChats.includes(sourceId)) {
+      botConfig.sourceChats = botConfig.sourceChats.filter(id => id !== sourceId);
+      removed++;
+    } else {
+      notFound++;
+    }
+  }
+  
+  saveConfig();
+  
+  const message = [
+    removed > 0 ? `✅ Removed ${removed} source${removed > 1 ? 's' : ''}` : '',
+    notFound > 0 ? `\n⚠️ Not found: ${notFound}` : '',
+    invalid > 0 ? `\n❌ Invalid IDs: ${invalid}` : ''
+  ].filter(Boolean).join('');
+  
+  await bot.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+  
+  // Log changes
+  if (botConfig.logChannel && removed > 0) {
+    await bot.sendMessage(botConfig.logChannel,
+      `Sources removed by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+      `Removed: ${removed}\n` +
+      `Not found: ${notFound}\n` +
+      `Invalid: ${invalid}`
+    );
+  }
+  
+  logger.info(`Sources removed - Removed: ${removed}, Not found: ${notFound}, Invalid: ${invalid}`);
+});
+
+// Remove destinations command with improved validation
+bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const destIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  if (destIds.length === 0) {
+    await bot.sendMessage(chatId,
+      '❌ Please provide destination chat IDs to remove.\n' +
+      'Format: `/remove_destinations chatId1 chatId2 ...`',
+      { parse_mode: 'MarkdownV2' }
+    );
+    return;
+  }
+  
+  let removed = 0;
+  let notFound = 0;
+  let invalid = 0;
+  
+  for (const destId of destIds) {
+    if (isNaN(destId)) {
+      invalid++;
+    } else if (botConfig.destinationChats.includes(destId)) {
+      botConfig.destinationChats = botConfig.destinationChats.filter(id => id !== destId);
+      removed++;
+    } else {
+      notFound++;
+    }
+  }
+  
+  saveConfig();
+  
+  const message = [
+    removed > 0 ? `✅ Removed ${removed} destination${removed > 1 ? 's' : ''}` : '',
+    notFound > 0 ? `\n⚠️ Not found: ${notFound}` : '',
+    invalid > 0 ? `\n❌ Invalid IDs: ${invalid}` : ''
+  ].filter(Boolean).join('');
+  
+  await bot.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
+  
+  // Log changes
+  if (botConfig.logChannel && removed > 0) {
+    await bot.sendMessage(botConfig.logChannel,
+      `Destinations removed by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+      `Removed: ${removed}\n` +
+      `Not found: ${notFound}\n` +
+      `Invalid: ${invalid}`
+    );
+  }
+  
+  logger.info(`Destinations removed - Removed: ${removed}, Not found: ${notFound}, Invalid: ${invalid}`);
+});
+
+// Clear sources command with confirmation
+bot.onText(/^\/clear_sources$/, async (msg) => {
+  const chatId = msg.chat.id;
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  const count = botConfig.sourceChats.length;
+  
+  if (count === 0) {
+    await bot.sendMessage(chatId, '⚠️ No source chats to clear.');
+    return;
+  }
+  
+  botConfig.sourceChats = [];
+  saveConfig();
+  
+  await bot.sendMessage(chatId, `✅ Cleared all ${count} source chat${count !== 1 ? 's' : ''}`);
+  
+  // Log changes
+  if (botConfig.logChannel) {
+    await bot.sendMessage(botConfig.logChannel,
+      `All sources cleared by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
+      `Cleared: ${count} sources`
+    );
+  }
+  
+  logger.info(`Sources cleared - Count: ${count}`);
+});
+
+// Clear destinations command with confirmation
+bot.onText(/^\/clear_destinations$/, async (msg) => {
+  const chatId = msg.chat.id;
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  const count = botConfig.destinationChats.length;
+  
+  if (count === 0) {
+    await bot.sendMessage(chatId, '⚠️ No destination chats to clear.');
+    return;
+  }
+  
+  botConfig.destinationChats = [];
+  saveConfig();
+  
+  await bot.sendMessage(chatId, `✅ Cleared all ${count} destination chat${count !== 1 ? 's' : ''}`);
+  
+  // Log changes
+  if (botConfig.logChannel) {
+    await bot.sendMessage(botConfig.logChannel,
+      `All destinations cleared by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
+      `Cleared: ${count} destinations`
+    );
+  }
+  
+  logger.info(`Destinations cleared - Count: ${count}`);
+});
+
+// Status command with enhanced information
+bot.onText(/^\/status$/, async ( /status$/, async (msg) => {
+  const chatId = msg.chat.id;
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  const uptime = process.uptime();
+  const days = Math.floor(uptime / 86400);
+  const hours = Math.floor((uptime % 86400) / 3600);
+  const minutes = Math.floor((uptime % 3600) / 60);
+  const seconds = Math.floor(uptime % 60);
+  
+  const status = 
+    `🤖 *Bot Status*\n\n` +
+    `*Configuration:*\n` +
+    `• Sources: ${botConfig.sourceChats.length}\n` +
+    `• Destinations: ${botConfig.destinationChats.length}\n` +
+    `• Keywords: ${botConfig.filters.keywords.length}\n` +
+    `• Message Types: ${botConfig.filters.types.length}\n` +
+    `• Rate Limit: ${botConfig.rateLimit.maxMessages} msgs/${botConfig.rateLimit.timeWindow}s\n\n` +
+    `*Statistics:*\n` +
+    `• Total Messages: ${botConfig.statistics.totalMessages}\n` +
+    `• Forwarded: ${botConfig.statistics.forwardedMessages}\n` +
+    `• Failed: ${botConfig.statistics.failedMessages}\n\n` +
+    `*System:*\n` +
+    `• Uptime: ${days}d ${hours}h ${minutes}m ${seconds}s\n` +
+    `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
+    `*Active Chats:*\n` +
+    `Sources:\n${botConfig.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
+    `Destinations:\n${botConfig.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
+
+  await bot.sendMessage(chatId, status, { 
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true
+  });
+});
+)
+
+// Help command with dynamic command list
+bot.onText(/^\/help$/, async (msg) => {
+  const chatId = msg.chat.id;
+  const isAdmin = botConfig.admins.includes(msg.from.id);
+  
+  // Check force subscribe
+  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+    return;
+  }
+  
+  const adminCommands = isAdmin ? 
+    `*Admin Commands:*\n` +
+    `• /broadcast [message] \\- Send message to all users\n\n` : '';
+  
+  const helpMessage = 
+    `📚 *Available Commands*\n\n` +
+    `${adminCommands}` +
+    `*General Commands:*\n` +
+    `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
+    `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
+    `• /list\\_sources \\- View source chats\n` +
+    `• /list\\_destinations \\- View destination chats\n` +
+    `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
+    `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
+    `• /clear\\_sources \\- Remove all source chats\n` +
+    `• /clear\\_destinations \\- Remove all destination chats\n` +
+    `• /status \\- Check bot status\n` +
+    `• /help \\- Show this message\n\n` +
+    `*Examples:*\n` +
+    `• Add sources:\n` +
+    `/add\\_sources \\-100123456789 \\-100987654321\n\n` +
+    `• Add destinations:\n` +
+    `/add\\_destinations \\-100123456789 \\-100987654321\n\n` +
+    `• Broadcast \\(admin only\\):\n` +
+    `/broadcast Hello everyone\\!`;
+  
+  await bot.sendMessage(chatId, helpMessage, {
+    parse_mode: 'MarkdownV2',
+    disable_web_page_preview: true
+  });
+});
+
+// Save configuration with improved error handling
+function saveConfig() {
+  try {
+    const configToSave = {
+      ...botConfig,
+      users: Array.from(botConfig.users),
+      clonedBots: Array.from(botConfig.clonedBots.entries())
+    };
+    writeFileSync('./config.json', JSON.stringify(configToSave, null, 2));
+    logger.info('Configuration saved successfully');
+  } catch (error) {
+    logger.error('Error saving configuration:', error.message);
+  }
+}
 
 // Rate limiting with improved cleanup
 const messageCounter = new Map();
@@ -551,13 +957,13 @@ function checkRateLimit(chatId) {
   return true;
 }
 
-// Improved message filter function
+// Message filter with improved type checking
 function matchesFilters(msg) {
   const messageType = Object.keys(msg).find(key => 
-    ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
+    botConfig.filters.types.includes(key)
   );
   
-  if (!botConfig.filters.types.includes(messageType)) {
+  if (!messageType) {
     return false;
   }
   
@@ -573,500 +979,50 @@ function matchesFilters(msg) {
   return true;
 }
 
-// Clean forward message function with improved error handling
-async function cleanForwardMessage(msg, botInstance, destChat) {
-  try {
-    if (msg.text) {
-      await botInstance.sendMessage(destChat, msg.text, {
-        parse_mode: msg.parse_mode || 'HTML',
-        disable_web_page_preview: msg.disable_web_page_preview
-      });
-    } 
-    else if (msg.photo) {
-      const photo = msg.photo[msg.photo.length - 1];
-      await botInstance.sendPhoto(destChat, photo.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.video) {
-      await botInstance.sendVideo(destChat, msg.video.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.document) {
-      await botInstance.sendDocument(destChat, msg.document.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.audio) {
-      await botInstance.sendAudio(destChat, msg.audio.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.voice) {
-      await botInstance.sendVoice(destChat, msg.voice.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-    else if (msg.video_note) {
-      await botInstance.sendVideoNote(destChat, msg.video_note.file_id);
-    }
-    else if (msg.sticker) {
-      await botInstance.sendSticker(destChat, msg.sticker.file_id);
-    }
-    else if (msg.location) {
-      await botInstance.sendLocation(destChat, msg.location.latitude, msg.location.longitude);
-    }
-    else if (msg.poll) {
-      await botInstance.sendPoll(destChat, msg.poll.question, msg.poll.options.map(opt => opt.text), {
-        is_anonymous: msg.poll.is_anonymous,
-        type: msg.poll.type,
-        allows_multiple_answers: msg.poll.allows_multiple_answers,
-        correct_option_id: msg.poll.correct_option_id
-      });
-    }
-    else if (msg.animation) {
-      await botInstance.sendAnimation(destChat, msg.animation.file_id, {
-        caption: msg.caption,
-        parse_mode: msg.caption_parse_mode || 'HTML'
-      });
-    }
-
-    return true;
-  } catch (error) {
-    logger.error({
-      event: 'clean_forward_error',
-      error: error.message,
-      messageId: msg.message_id,
-      source: msg.chat.id,
-      destination: destChat
-    });
-    return false;
-  }
-}
-
-// Forward message function with improved error handling
-async function forwardMessage(msg, botInstance = bot, config = botConfig) {
-  try {
-    if (!config.sourceChats.includes(msg.chat.id)) {
-      return;
-    }
-    
-    if (!matchesFilters(msg)) {
-      return;
-    }
-    
-    if (!checkRateLimit(msg.chat.id)) {
-      logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
-      return;
-    }
-    
-    for (const destChat of config.destinationChats) {
-      const success = await cleanForwardMessage(msg, botInstance, destChat);
-      
-      if (success) {
-        logger.info({
-          event: 'message_forwarded',
-          source: msg.chat.id,
-          destination: destChat,
-          messageId: msg.message_id,
-          type: Object.keys(msg).find(key => 
-            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
-          )
-        });
-        
-        if (config.logChannel) {
-          const messageType = Object.keys(msg).find(key => 
-            ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation'].includes(key)
-          );
-          
-          await botInstance.sendMessage(config.logChannel,
-            `Message forwarded:\nFrom: ${msg.chat.id}\nTo: ${destChat}\nType: ${messageType}`
-          );
-        }
-      }
-    }
-  } catch (error) {
-    logger.error({
-      event: 'forward_error',
-      error: error.message,
-      messageId: msg.message_id,
-      source: msg.chat.id
-    });
-  }
-}
-
-// Admin commands with improved error handling
-async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
-  const text = msg.text;
-  const chatId = msg.chat.id;
-
-  // Check force subscribe first
-  if (!(await checkForceSubscribe(msg, botInstance, config))) {
-    return;
-  }
-
-  const isAdmin = config.admins.includes(msg.from.id);
-  const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
+// Forward messages with improved error handling and logging
+bot.on('message', async (msg) => {
+  // Skip commands
+  if (msg.text?.startsWith('/')) return;
   
-  if (requiresAdmin && !isAdmin) {
+  // Check if message is from a source chat
+  if (!botConfig.sourceChats.includes(msg.chat.id)) return;
+  
+  // Check rate limit
+  if (!checkRateLimit(msg.chat.id)) {
+    logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
     return;
   }
-
+  
+  // Check message filters
+  if (!matchesFilters(msg)) {
+    logger.info(`Message filtered: ${msg.message_id}`);
+    return;
+  }
+  
   try {
-    if (text.startsWith('/add_sources')) {
-      const sourceIds = text.split(' ').slice(1).map(id => parseInt(id));
-      if (sourceIds.length === 0) {
-        await botInstance.sendMessage(chatId, 
-          'Please provide at least one valid chat ID\n' +
-          'Format: /add_sources -100123456789 -100987654321 ...'
-        );
-        return;
-      }
-
-      let added = 0;
-      let skipped = 0;
-      
-      for (const sourceId of sourceIds) {
-        if (!sourceId) continue;
-        
-        if (!config.sourceChats.includes(sourceId)) {
-          config.sourceChats.push(sourceId);
-          added++;
-        } else {
-          skipped++;
-        }
-      }
-      
-      saveConfig();
-      
-      const message = [
-        added > 0 ? `✅ Added ${added} new source${added > 1 ? 's' : ''}` : '',
-        skipped > 0 ? `⚠️ Skipped ${skipped} existing source${skipped > 1 ? 's' : ''}` : ''
-      ].filter(Boolean).join('\n');
-      
-      await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
-      
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `Sources added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
-          `Added: ${added}\nSkipped: ${skipped}`
-        );
+    for (const destId of botConfig.destinationChats) {
+      try {
+        await bot.copyMessage(destId, msg.chat.id, msg.message_id);
+        botConfig.statistics.forwardedMessages++;
+        logger.info(`Message ${msg.message_id} forwarded to ${destId}`);
+      } catch (error) {
+        botConfig.statistics.failedMessages++;
+        logger.error(`Failed to forward message ${msg.message_id} to ${destId}:`, error.message);
       }
     }
-
-    else if (text.startsWith('/add_destinations')) {
-      const destIds = text.split(' ').slice(1).map(id => parseInt(id));
-      if (destIds.length === 0) {
-        await botInstance.sendMessage(chatId, 
-          'Please provide at least one valid chat ID\n' +
-          'Format: /add_destinations -100123456789 -100987654321 ...'
-        );
-        return;
-      }
-
-      let added = 0;
-      let skipped = 0;
-      
-      for (const destId of destIds) {
-        if (!destId) continue;
-        
-        if (!config.destinationChats.includes(destId)) {
-          config.destinationChats.push(destId);
-          added++;
-        } else {
-          skipped++;
-        }
-      }
-      
-      saveConfig();
-      
-      const message = [
-        added > 0 ? `✅ Added ${added} new destination${added > 1 ? 's' : ''}` : '',
-        skipped > 0 ? `⚠️ Skipped ${skipped} existing destination${skipped > 1 ? 's' : ''}` : ''
-      ].filter(Boolean).join('\n');
-      
-      await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
-      
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `Destinations added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
-          `Added: ${added}\nSkipped: ${skipped}`
-        );
-      }
-    }
-
-    else if (text === '/list_sources') {
-      const sources = config.sourceChats.length > 0 
-        ? config.sourceChats.map(id => `• ${id}`).join('\n')
-        : 'No source chats configured';
-      await botInstance.sendMessage(chatId, `📋 *Source Chats:*\n${sources}`, { 
-        parse_mode: 'Markdown',
-        disable_web_page_preview: true
-      });
-    }
-
-    else if (text === '/list_destinations') {
-      const destinations = config.destinationChats.length > 0
-        ? config.destinationChats.map(id => `• ${id}`).join('\n')
-        : 'No destination chats configured';
-      await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { 
-        parse_mode: 'Markdown',
-        disable_web_page_preview: true
-      });
-    }
-
-    else if (text.startsWith('/remove_sources')) {
-      const sourceIds = text.split(' ').slice(1).map(id => parseInt(id));
-      if (sourceIds.length === 0) {
-        await botInstance.sendMessage(chatId, 
-          'Please provide source chat IDs to remove.\nFormat: /remove_sources chatId1 chatId2 ...'
-        );
-        return;
-      }
-
-      let removed = 0;
-      let notFound = 0;
-      let invalid = 0;
-      
-      for (const sourceId of sourceIds) {
-        if (isNaN(sourceId)) {
-          invalid++;
-        } else if (config.sourceChats.includes(sourceId)) {
-          config.sourceChats = config.sourceChats.filter(id => id !== sourceId);
-          removed++;
-        } else {
-          notFound++;
-        }
-      }
-      
-      saveConfig();
-      
-      const message = [
-        removed > 0 ? `✅ Removed ${removed} source${removed > 1 ? 's' : ''}` : '',
-        notFound > 0 ? `⚠️ Not found: ${notFound}` : '',
-        invalid > 0 ? `❌ Invalid IDs: ${invalid}` : ''
-      ].filter(Boolean).join('\n');
-      
-      await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
-      
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `Sources removed by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
-          `Removed: ${removed}\nNot found: ${notFound}\nInvalid: ${invalid}`
-        );
-      }
-    }
-
-    else if (text.startsWith('/remove_destinations')) {
-      const destIds = text.split(' ').slice(1).map(id => parseInt(id));
-      if (destIds.length === 0) {
-        await botInstance.sendMessage(chatId, 
-          'Please provide destination chat IDs to remove.\nFormat: /remove_destinations chatId1 chatId2 ...'
-        );
-        return;
-      }
-
-      let removed = 0;
-      let notFound = 0;
-      let invalid = 0;
-      
-      for (const destId of destIds) {
-        if (isNaN(destId)) {
-          invalid++;
-        } else if (config.destinationChats.includes(destId)) {
-          config.destinationChats = config.destinationChats.filter(id => id !== destId);
-          removed++;
-        } else {
-          notFound++;
-        }
-      }
-      
-      saveConfig();
-      
-      const message = [
-        removed > 0 ? `✅ Removed ${removed} destination${removed > 1 ? 's' : ''}` : '',
-        notFound > 0 ? `⚠️ Not found: ${notFound}` : '',
-        invalid > 0 ? `❌ Invalid IDs: ${invalid}` : ''
-      ].filter(Boolean).join('\n');
-      
-      await botInstance.sendMessage(chatId, message || '⚠️ No valid chat IDs provided');
-      
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `Destinations removed by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
-          `Removed: ${removed}\nNot found: ${notFound}\nInvalid: ${invalid}`
-        );
-      }
-    }
-
-    else if (text === '/clear_sources') {
-      const count = config.sourceChats.length;
-      config.sourceChats = [];
-      saveConfig();
-      await botInstance.sendMessage(chatId, `✅ Cleared all ${count} source chat${count !== 1 ? 's' : ''}`);
-      
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `All sources cleared by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
-          `Cleared: ${count} sources`
-        );
-      }
-    }
-
-    else if (text === '/clear_destinations') {
-      const count = config.destinationChats.length;
-      config.destinationChats = [];
-      saveConfig();
-      await botInstance.sendMessage(chatId, `✅ Cleared all ${count} destination chat${count !== 1 ? 's' : ''}`);
-      
-      if (config.logChannel) {
-        await botInstance.sendMessage(config.logChannel,
-          `All destinations cleared by ${msg.from.id} (@${msg.from.username || 'N/A'})\n` +
-          `Cleared: ${count} destinations`
-        );
-      }
-    }
-
-    else if (text === '/help') {
-      const adminCommands = isAdmin ? 
-        `*Admin Commands:*\n` +
-        `• /clone [token] \\- Create your own bot\n` +
-        `• /broadcast [message] \\- Send message to all users\n` +
-        `• /add\\_sources [chat\\_id1] [chat\\_id2] \\- Add source chats\n` +
-        `• /add\\_destinations [chat\\_id1] [chat\\_id2] \\- Add destination chats\n` +
-        `• /remove\\_sources [chat\\_id1] [chat\\_id2] \\- Remove source chats\n` +
-        `• /remove\\_destinations [chat\\_id1] [chat\\_id2] \\- Remove destination chats\n` +
-        `• /clear\\_sources \\- Remove all source chats\n` +
-        `• /clear\\_destinations \\- Remove all destination chats\n\n` : '';
-
-      const helpText = `*Available Commands:*\n\n` +
-        `${adminCommands}*General Commands:*\n` +
-        `• /list\\_sources \\- Show source chats\n` +
-        `• /list\\_destinations \\- Show destinations\n` +
-        `• /status \\- Show bot status\n` +
-        `• /help \\- Show this message\n\n` +
-        `*Examples:*\n` +
-        `• /add\\_sources \\-100123456789 \\-100987654321\n` +
-        `• /add\\_destinations \\-100123456789 \\-100987654321\n` +
-        `${!isAdmin ? '\n⚠️ Some commands require admin privileges' : ''}`;
-
-      await botInstance.sendMessage(chatId, helpText, { 
-        parse_mode: 'MarkdownV2',
-        disable_web_page_preview: true 
-      });
-    }
-
-    else if (text === '/status') {
-      const status = 
-        `*Bot Status:*\n` +
-        `• Sources: ${config.sourceChats.length}\n` +
-        `• Destinations: ${config.destinationChats.length}\n` +
-        `• Keywords: ${config.filters.keywords.length}\n` +
-        `• Message Types: ${config.filters.types.join(', ')}\n` +
-        `• Rate Limit: ${config.rateLimit.maxMessages} msgs/${config.rateLimit.timeWindow}s\n` +
-        `• Cloned Bots: ${botConfig.clonedBots.size}\n\n` +
-        `*Active Chats:*\n` +
-        `Sources:\n${config.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
-        `Destinations:\n${config.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
-
-      await botInstance.sendMessage(chatId, status, { 
-        parse_mode: 'Markdown',
-        disable_web_page_preview: true
-      });
-    }
+    
+    saveConfig();
   } catch (error) {
-    logger.error('Admin command error:', error);
-    await botInstance.sendMessage(chatId, '❌ An error occurred while processing your command. Please try again.');
+    logger.error('Forward error:', error);
   }
-}
-
-// Set up event handlers for a bot instance
-function setupBotEventHandlers(botInstance, config) {
-  // Remove any existing handlers
-  botInstance.removeAllListeners('message');
-  botInstance.removeAllListeners('polling_error');
-  botInstance.removeAllListeners('error');
-
-  // Set up new handlers
-  botInstance.on('message', async (msg) => {
-    if (msg.text?.startsWith('/')) {
-      await handleAdminCommands(msg, botInstance, config);
-    } else {
-      await forwardMessage(msg, botInstance, config);
-    }
-  });
-
-  botInstance.on('polling_error', (error) => {
-    logger.error({
-      event: 'polling_error',
-      error: error.message,
-      botToken: config.botToken
-    });
-  });
-
-  botInstance.on('error', (error) => {
-    logger.error({
-      event: 'bot_error',
-      error: error.message,
-      botToken: config.botToken
-    });
-  });
-}
-
-// Save configuration with improved error handling
-function saveConfig() {
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      const configToSave = {
-        ...botConfig,
-        clonedBots: Array.from(botConfig.clonedBots.entries())
-      };
-      writeFileSync('./config.json', JSON.stringify(configToSave, null, 2));
-      logger.info('Configuration saved successfully');
-    } catch (error) {
-      logger.error('Error saving configuration:', error.message);
-    }
-  }
-}
-
-// Set up event handlers for main bot
-setupBotEventHandlers(bot, botConfig);
-
-// Set up bot commands with improved error handling
-async function setupBotCommands() {
-  try {
-    await bot.setMyCommands([
-      { command: 'start', description: 'Start the bot and get help' },
-      { command: 'clone', description: 'Clone this bot with your own token' },
-      { command: 'add_sources', description: 'Add multiple source chats' },
-      { command: 'add_destinations', description: 'Add multiple destination chats' },
-      { command: 'list_sources', description: 'List all source chats' },
-      { command: 'list_destinations', description: 'List all destination chats' },
-      { command: 'remove_sources', description: 'Remove multiple source chats' },
-      { command: 'remove_destinations', description: 'Remove multiple destination chats' },
-      { command: 'clear_sources', description: 'Remove all source chats' },
-      { command: 'clear_destinations', description: 'Remove all destination chats' },
-      { command: 'broadcast', description: 'Send message to all users (Admin only)' },
-      { command: 'status', description: 'Show bot status' },
-      { command: 'help', description: 'Show help message' }
-    ]);
-    logger.info('Bot commands set up successfully');
-  } catch (error) {
-    logger.error('Failed to set up bot commands:', error);
-  }
-}
-
-setupBotCommands().catch(error => {
-  logger.error('Failed to set up bot commands:', error.message);
 });
 
-// Enhanced error handling for the main process
+// Error handling with improved logging
+bot.on('polling_error', (error) => {
+  logger.error('Polling error:', error.message);
+});
+
+// Process error handling with improved logging
 process.on('unhandledRejection', (error) => {
   logger.error('Unhandled rejection:', error);
 });
@@ -1075,12 +1031,13 @@ process.on('uncaughtException', (error) => {
   logger.error('Uncaught exception:', error);
 });
 
-// Graceful shutdown handling
+// Graceful shutdown with improved cleanup
 process.on('SIGINT', async () => {
   logger.info('Received SIGINT. Graceful shutdown initiated...');
   try {
     await bot.stopPolling();
-    logger.info('Bot polling stopped successfully');
+    saveConfig();
+    logger.info('Bot stopped successfully');
     process.exit(0);
   } catch (error) {
     logger.error('Error during shutdown:', error);
@@ -1092,7 +1049,8 @@ process.on('SIGTERM', async () => {
   logger.info('Received SIGTERM. Graceful shutdown initiated...');
   try {
     await bot.stopPolling();
-    logger.info('Bot polling stopped successfully');
+    saveConfig();
+    logger.info('Bot stopped successfully');
     process.exit(0);
   } catch (error) {
     logger.error('Error during shutdown:', error);
@@ -1100,4 +1058,22 @@ process.on('SIGTERM', async () => {
   }
 });
 
-logger.info('Bot started successfully with improved error handling');
+// Periodic statistics reset
+setInterval(() => {
+  const now = new Date();
+  const lastReset = new Date(botConfig.statistics.lastReset);
+  
+  // Reset statistics every 24 hours
+  if (now.getTime() - lastReset.getTime() > 24 * 60 * 60 * 1000) {
+    botConfig.statistics = {
+      totalMessages: 0,
+      forwardedMessages: 0,
+      failedMessages: 0,
+      lastReset: now
+    };
+    saveConfig();
+    logger.info('Statistics reset');
+  }
+}, 60 * 60 * 1000); // Check every hour
+
+logger.info('Bot started successfully with enhanced features');
