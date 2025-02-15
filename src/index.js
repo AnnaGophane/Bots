@@ -175,37 +175,28 @@ try {
   process.exit(1);
 }
 
-// Track command processing to prevent duplicates
-const processingCommands = new Set();
+// Track processed messages to prevent duplicates
+const processedMessages = new Set();
 
 // Command handler wrapper to prevent duplicate processing
 async function handleCommand(msg, handler) {
-  const commandId = `${msg.chat.id}:${msg.message_id}`;
-  if (processingCommands.has(commandId)) {
+  const messageId = `${msg.chat.id}:${msg.message_id}`;
+  
+  if (processedMessages.has(messageId)) {
     return;
   }
   
-  processingCommands.add(commandId);
+  processedMessages.add(messageId);
+  
+  // Clean up old messages after 1 minute
+  setTimeout(() => {
+    processedMessages.delete(messageId);
+  }, 60000);
+  
   try {
     await handler(msg);
-  } finally {
-    processingCommands.delete(commandId);
-  }
-}
-
-// Enhanced message handling middleware
-async function messageMiddleware(msg, next) {
-  try {
-    // Update statistics
-    botConfig.statistics.totalMessages++;
-    
-    // Log message details
-    logger.info(`Received message from ${msg.from?.id || 'channel'} in chat ${msg.chat.id}`);
-    
-    // Process message
-    await next(msg);
   } catch (error) {
-    logger.error('Message middleware error:', error);
+    logger.error(`Error handling command: ${error.message}`);
   }
 }
 
@@ -297,7 +288,7 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// Welcome message handler with improved formatting and user tracking
+// Command handlers
 async function handleStart(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
@@ -352,21 +343,6 @@ async function handleStart(msg) {
   logger.info(`New user started bot: ${userId} (@${msg.from.username || 'N/A'})`);
 }
 
-// Register command handlers with duplicate prevention
-bot.onText(/^\/start$/, msg => handleCommand(msg, handleStart));
-bot.onText(/^\/broadcast(?:\s+(.+))?$/, msg => handleCommand(msg, handleBroadcast));
-bot.onText(/^\/add_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddSources));
-bot.onText(/^\/add_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddDestinations));
-bot.onText(/^\/list_sources$/, msg => handleCommand(msg, handleListSources));
-bot.onText(/^\/list_destinations$/, msg => handleCommand(msg, handleListDestinations));
-bot.onText(/^\/remove_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveSources));
-bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveDestinations));
-bot.onText(/^\/clear_sources$/, msg => handleCommand(msg, handleClearSources));
-bot.onText(/^\/clear_destinations$/, msg => handleCommand(msg, handleClearDestinations));
-bot.onText(/^\/status$/, msg => handleCommand(msg, handleStatus));
-bot.onText(/^\/help$/, msg => handleCommand(msg, handleHelp));
-
-// Command handler implementations
 async function handleBroadcast(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
@@ -856,7 +832,7 @@ async function handleStatus(msg) {
 
 async function handleHelp(msg) {
   const chatId = msg.chat.id;
-  const isAdmin = botConfig.admins.includes(msg.from.id);
+  const isAdmin = botConfig.admins.includes(msg.from .id);
   
   // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
@@ -894,6 +870,20 @@ async function handleHelp(msg) {
     disable_web_page_preview: true
   });
 }
+
+// Register command handlers with duplicate prevention
+bot.onText(/^\/start$/, msg => handleCommand(msg, handleStart));
+bot.onText(/^\/broadcast(?:\s+(.+))?$/, msg => handleCommand(msg, handleBroadcast));
+bot.onText(/^\/add_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddSources));
+bot.onText(/^\/add_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddDestinations));
+bot.onText(/^\/list_sources$/, msg => handleCommand(msg, handleListSources));
+bot.onText(/^\/list_destinations$/, msg => handleCommand(msg, handleListDestinations));
+bot.onText(/^\/remove_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveSources));
+bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveDestinations));
+bot.onText(/^\/clear_sources$/, msg => handleCommand(msg, handleClearSources));
+bot.onText(/^\/clear_destinations$/, msg => handleCommand(msg, handleClearDestinations));
+bot.onText(/^\/status$/, msg => handleCommand(msg, handleStatus));
+bot.onText(/^\/help$/, msg => handleCommand(msg, handleHelp));
 
 // Save configuration with improved error handling
 function saveConfig() {
