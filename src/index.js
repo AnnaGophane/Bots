@@ -814,11 +814,12 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     }
 
     else if (text === '/list_destinations') {
-      const destinations const destinations = config.destinationChats.length > 0
+       else if (text === '/list_destinations') {
+      const destinations = config.destinationChats.length > 0
         ? config.destinationChats.map(id => `• ${id}`).join('\n')
         : 'No destination chats configured';
       await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { 
-         parse_mode: 'Markdown',
+        parse_mode: 'Markdown',
         disable_web_page_preview: true
       });
     }
