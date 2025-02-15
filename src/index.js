@@ -37,10 +37,10 @@ const defaultConfig = {
     maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
     timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '10')
   },
-  admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
+  admins: process.env.ADMIN_USERS ? JSON.parse(process.env.ADMIN_USERS) : [],
   clonedBots: new Map(),
   logChannel: process.env.LOG_CHANNEL || '',
-  forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
+  forceSubscribe: process.env.FORCE_SUBSCRIBE ? JSON.parse(process.env.FORCE_SUBSCRIBE) : []
 };
 
 // Load or create configuration
@@ -797,9 +797,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       
       if (config.logChannel) {
         await botInstance.sendMessage(config.logChannel,
-          `Destinations added by ${msg.from.id} (@${msg.from.username || 'N/A'}) Here's the continuation of the index.js file from where we left off:
-
-):\n` +
+          `Destinations added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
           `Added: ${added}\nSkipped: ${skipped}`
         );
       }
@@ -807,7 +805,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
 
     else if (text === '/list_sources') {
       const sources = config.sourceChats.length > 0 
-        ? config.sourceChats.map(id => `• ${id}`).join('\n')
+        ? config.sourceChats.map(id => `• ${id}`).join('\n ).join('\n')
         : 'No source chats configured';
       await botInstance.sendMessage(chatId, `📋 *Source Chats:*\n${sources}`, { 
         parse_mode: 'Markdown',
