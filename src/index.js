@@ -1,4 +1,3 @@
-// Import required modules
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
@@ -123,6 +122,7 @@ function isValidBotToken(token) {
 
 // Helper function to escape markdown v2 characters
 function escapeMarkdown(text) {
+  if (!text) return '';
   return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 }
 
@@ -182,12 +182,7 @@ async function messageMiddleware(msg, next) {
     botConfig.statistics.totalMessages++;
     
     // Log message details
-    logger.info(`Received message from ${msg.from.id} in chat ${msg.chat.id}`);
-    
-    // Check force subscribe
-    if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-      return;
-    }
+    logger.info(`Received message from ${msg.from?.id || 'channel'} in chat ${msg.chat.id}`);
     
     // Process message
     await next(msg);
@@ -198,7 +193,9 @@ async function messageMiddleware(msg, next) {
 
 // Add force subscribe check function with improved validation
 async function checkForceSubscribe(msg, botInstance, config) {
-  const userId = msg.from.id;
+  const userId = msg.from?.id;
+  if (!userId) return true; // Skip for channel posts
+  
   const requiredChannels = config.forceSubscribe || [];
   
   if (!requiredChannels.length) return true;
@@ -219,7 +216,6 @@ async function checkForceSubscribe(msg, botInstance, config) {
       }
     } catch (error) {
       logger.error('Force subscribe check error:', error);
-      // Continue checking other channels even if one fails
       continue;
     }
   }
@@ -819,12 +815,11 @@ bot.onText(/^\/status$/, async (msg) => {
     `• Message Types: ${botConfig.filters.types.length}\n` +
     `• Rate Limit: ${botConfig.rateLimit.maxMessages} msgs/${botConfig.rateLimit.timeWindow}s\n\n` +
     `*Statistics:*\n` +
-    `• Total Messages: ${botConfig.statistics.totalMessages}\n` +
-    `• Forwarded: ${botConfig.statistics.forwardedMessages}\n` +
+    `• Total Messages: ${botConfig.statistics.totalMessages}\n` + `• Forwarded: ${botConfig.statistics.forwardedMessages}\n` +
     `• Failed: ${botConfig.statistics.failedMessages}\n\n` +
     `*System:*\n` +
     `• Uptime: ${days}d ${hours}h ${minutes}m ${seconds}s\n` +
-    `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB\n\n` +
+    `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
     `*Active Chats:*\n` +
     `Sources:\n${botConfig.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
     `Destinations:\n${botConfig.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
@@ -847,18 +842,18 @@ bot.onText(/^\/help$/, async (msg) => {
   
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
-    `• /broadcast \\[message\\] \\- Send message to all users\n\n` : '';
+    `• /broadcast [message] \\- Send message to all users\n\n` : '';
   
   const helpMessage = 
     `📚 *Available Commands*\n\n` +
     `${adminCommands}` +
     `*General Commands:*\n` +
-    `• /add\\_sources \\[chat\\_ids\\] \\- Add source chats\n` +
-    `• /add\\_destinations \\[chat\\_ids\\] \\- Add destination chats\n` +
+    `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
+    `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
     `• /list\\_sources \\- View source chats\n` +
     `• /list\\_destinations \\- View destination chats\n` +
-    `• /remove\\_sources \\[chat\\_ids\\] \\- Remove source chats\n` +
-    `• /remove\\_destinations \\[chat\\_ids\\] \\- Remove destination chats\n` +
+    `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
+    `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
     `• /clear\\_sources \\- Remove all source chats\n` +
     `• /clear\\_destinations \\- Remove all destination chats\n` +
     `• /status \\- Check bot status\n` +
@@ -919,11 +914,13 @@ function checkRateLimit(chatId) {
 
 // Message filter with improved type checking
 function matchesFilters(msg) {
+  // Check for channel posts
   const messageType = Object.keys(msg).find(key => 
     botConfig.filters.types.includes(key)
   );
   
   if (!messageType) {
+    logger.debug(`Message type not in filters: ${Object.keys(msg).join(', ')}`);
     return false;
   }
   
@@ -932,6 +929,7 @@ function matchesFilters(msg) {
       msg.text.toLowerCase().includes(keyword.toLowerCase())
     );
     if (!hasKeyword) {
+      logger.debug(`Message does not contain any keywords`);
       return false;
     }
   }
@@ -940,47 +938,65 @@ function matchesFilters(msg) {
 }
 
 // Forward messages with improved error handling and logging
-bot.on('message', async (msg) => {
-  // Skip commands
-  if (msg.text?.startsWith('/')) return;
-  
-  // Check if message is from a source chat
-  if (!botConfig.sourceChats.includes(msg.chat.id)) return;
-  
-  // Check rate limit
-  if (!checkRateLimit(msg.chat.id)) {
-    logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
-    return;
-  }
-  
-  // Check message filters
-  if (!matchesFilters(msg)) {
-    logger.info(`Message filtered: ${msg.message_id}`);
-    return;
-  }
-  
+bot.on('channel_post', async (msg) => {
   try {
+    // Check if post is from a source chat
+    if (!botConfig.sourceChats.includes(msg.chat.id)) {
+      logger.debug(`Channel post from non-source chat: ${msg.chat.id}`);
+      return;
+    }
+    
+    logger.info(`Processing channel post ${msg.message_id} from chat ${msg.chat.id}`);
+    
+    // Check rate limit
+    if (!checkRateLimit(msg.chat.id)) {
+      logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
+      return;
+    }
+    
+    // Check message filters
+    if (!matchesFilters(msg)) {
+      logger.info(`Channel post filtered: ${msg.message_id}`);
+      return;
+    }
+    
+    // Forward to all destination chats
     for (const destId of botConfig.destinationChats) {
       try {
-        await bot.copyMessage(destId, msg.chat.id, msg.message_id);
+        logger.info(`Attempting to forward channel post ${msg.message_id} to ${destId}`);
+        
+        // Use copyMessage to avoid forwarded tag
+        await bot.copyMessage(destId, msg.chat.id, msg.message_id, {
+          disable_notification: false,
+          protect_content: false
+        });
+        
         botConfig.statistics.forwardedMessages++;
-        logger.info(`Message ${msg.message_id} forwarded to ${destId}`);
+        logger.info(`Successfully forwarded channel post ${msg.message_id} to ${destId}`);
       } catch (error) {
         botConfig.statistics.failedMessages++;
-        logger.error(`Failed to forward message ${msg.message_id} to ${destId}:`, error.message);
+        logger.error(`Failed to forward channel post ${msg.message_id} to ${destId}: ${error.message}`);
+        
+        // Check specific error cases
+        if (error.response?.body?.error_code === 403) {
+          logger.error(`Bot lacks permission in chat ${destId}. Please ensure bot is admin with post permissions.`);
+        } else if (error.response?.body?.error_code === 400) {
+          logger.error(`Bad request when forwarding to ${destId}: ${error.response.body.description}`);
+        }
       }
     }
     
     saveConfig();
   } catch (error) {
-    logger.error('Forward error:', error);
+    logger.error('Channel post forward error:', error);
   }
 });
 
 // Error handling with improved logging
 bot.on('polling_error', (error) => {
-  if (error.code === 'EFATAL') return;
-  logger.error('Polling error:', error.message);
+  if (!error.message.includes('EFATAL')) {
+    logger.error('Polling error:', error.message);
+  }
 });
 
 // Process error handling with improved logging
