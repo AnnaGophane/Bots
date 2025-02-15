@@ -805,7 +805,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
 
     else if (text === '/list_sources') {
       const sources = config.sourceChats.length > 0 
-        ? config.sourceChats.map(id => `• ${id}`).join('\n ).join('\n')
+        ? config.sourceChats.map(id => `• ${id}`).join('\n')
         : 'No source chats configured';
       await botInstance.sendMessage(chatId, `📋 *Source Chats:*\n${sources}`, { 
         parse_mode: 'Markdown',
@@ -814,7 +814,7 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
     }
 
     else if (text === '/list_destinations') {
-      const destinations = config.destinationChats.length > 0
+      const destinations const destinations = config.destinationChats.length > 0
         ? config.destinationChats.map(id => `• ${id}`).join('\n')
         : 'No destination chats configured';
       await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { 
