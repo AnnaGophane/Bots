@@ -1,5 +1,4 @@
-// run `node index.js` in the terminal
-
+// Import required modules
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
@@ -827,7 +826,7 @@ bot.onText(/^\/status$/, async (msg) => {
     `• Uptime: ${days}d ${hours}h ${minutes}m ${seconds}s\n` +
     `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
     `*Active Chats:*\n` +
-    `Sources:\n${botConfig. sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
+    `Sources:\n${botConfig.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
     `Destinations:\n${botConfig.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
 
   await bot.sendMessage(chatId, status, { 
@@ -980,6 +979,7 @@ bot.on('message', async (msg) => {
 
 // Error handling with improved logging
 bot.on('polling_error', (error) => {
+  if (error.code === 'EFATAL') return;
   logger.error('Polling error:', error.message);
 });
 
