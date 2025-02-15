@@ -346,7 +346,7 @@ bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
   
   // Check if user is admin
   if (!botConfig.admins.includes(userId)) {
-    await bot.sendMessage(chatId, '⚠️ This command is only available for administrators.');
+    await bot.sendMessage(chatId, '⚠️ This command is only available for administrators\\.');
     logger.warn(`Non-admin user ${userId} attempted to use broadcast command`);
     return;
   }
@@ -358,7 +358,7 @@ bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
   
   if (!message) {
     await bot.sendMessage(chatId,
-      '❌ Please provide a message to broadcast.\n' +
+      '❌ Please provide a message to broadcast\\.\n' +
       'Format: `/broadcast Your message here`',
       { parse_mode: 'MarkdownV2' }
     );
@@ -372,7 +372,7 @@ bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
     
     // Send initial status message
     const statusMsg = await bot.sendMessage(chatId,
-      '📢 Broadcasting message...\n' +
+      '📢 Broadcasting message\\.\\.\\.\n' +
       `Total recipients: ${total}`
     );
     
@@ -387,7 +387,7 @@ bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
         if (successCount % 10 === 0) {
           const elapsed = Math.floor((Date.now() - startTime) / 1000);
           await bot.editMessageText(
-            `📢 Broadcasting...\n` +
+            `📢 Broadcasting\\.\\.\\.\n` +
             `Progress: ${successCount + failCount}/${total}\n` +
             `✅ Sent: ${successCount}\n` +
             `❌ Failed: ${failCount}\n` +
@@ -433,7 +433,7 @@ bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
     logger.info(`Broadcast completed - Success: ${successCount}, Failed: ${failCount}, Time: ${elapsed}s`);
   } catch (error) {
     logger.error('Broadcast error:', error);
-    await bot.sendMessage(chatId, '❌ An error occurred while broadcasting the message.');
+    await bot.sendMessage(chatId, '❌ An error occurred while broadcasting the message\\.');
   }
 });
 
@@ -449,8 +449,8 @@ bot.onText(/^\/add_sources(?:\s+(.+))?$/, async (msg, match) => {
   
   if (sourceIds.length === 0) {
     await bot.sendMessage(chatId,
-      '❌ Please provide valid chat IDs.\n' +
-      'Format: `/add_sources -100123456789 -100987654321`',
+      '❌ Please provide valid chat IDs\\.\n' +
+      'Format: `/add\\_sources \\-100123456789 \\-100987654321`',
       { parse_mode: 'MarkdownV2' }
     );
     return;
@@ -517,8 +517,8 @@ bot.onText(/^\/add_destinations(?:\s+(.+))?$/, async (msg, match) => {
   
   if (destIds.length === 0) {
     await bot.sendMessage(chatId,
-      '❌ Please provide valid chat IDs.\n' +
-      'Format: `/add_destinations -100123456789 -100987654321`',
+      '❌ Please provide valid chat IDs\\.\n' +
+      'Format: `/add\\_destinations \\-100123456789 \\-100987654321`',
       { parse_mode: 'MarkdownV2' }
     );
     return;
@@ -629,8 +629,8 @@ bot.onText(/^\/remove_sources(?:\s+(.+))?$/, async (msg, match) => {
   
   if (sourceIds.length === 0) {
     await bot.sendMessage(chatId,
-      '❌ Please provide source chat IDs to remove.\n' +
-      'Format: `/remove_sources chatId1 chatId2 ...`',
+      '❌ Please provide source chat IDs to remove\\.\n' +
+      'Format: `/remove\\_sources chatId1 chatId2 \\.\\.\\.`',
       { parse_mode: 'MarkdownV2' }
     );
     return;
@@ -686,8 +686,8 @@ bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, async (msg, match) => {
   
   if (destIds.length === 0) {
     await bot.sendMessage(chatId,
-      '❌ Please provide destination chat IDs to remove.\n' +
-      'Format: `/remove_destinations chatId1 chatId2 ...`',
+      '❌ Please provide destination chat IDs to remove\\.\n' +
+      'Format: `/remove\\_destinations chatId1 chatId2 \\.\\.\\.`',
       { parse_mode: 'MarkdownV2' }
     );
     return;
@@ -743,7 +743,7 @@ bot.onText(/^\/clear_sources$/, async (msg) => {
   const count = botConfig.sourceChats.length;
   
   if (count === 0) {
-    await bot.sendMessage(chatId, '⚠️ No source chats to clear.');
+    await bot.sendMessage(chatId, '⚠️ No source chats to clear\\.');
     return;
   }
   
@@ -775,7 +775,7 @@ bot.onText(/^\/clear_destinations$/, async (msg) => {
   const count = botConfig.destinationChats.length;
   
   if (count === 0) {
-    await bot.sendMessage(chatId, '⚠️ No destination chats to clear.');
+    await bot.sendMessage(chatId, '⚠️ No destination chats to clear\\.');
     return;
   }
   
@@ -824,7 +824,7 @@ bot.onText(/^\/status$/, async (msg) => {
     `• Failed: ${botConfig.statistics.failedMessages}\n\n` +
     `*System:*\n` +
     `• Uptime: ${days}d ${hours}h ${minutes}m ${seconds}s\n` +
-    `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
+    `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB\n\n` +
     `*Active Chats:*\n` +
     `Sources:\n${botConfig.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
     `Destinations:\n${botConfig.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
@@ -847,18 +847,18 @@ bot.onText(/^\/help$/, async (msg) => {
   
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
-    `• /broadcast [message] \\- Send message to all users\n\n` : '';
+    `• /broadcast \\[message\\] \\- Send message to all users\n\n` : '';
   
   const helpMessage = 
     `📚 *Available Commands*\n\n` +
     `${adminCommands}` +
     `*General Commands:*\n` +
-    `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
-    `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
+    `• /add\\_sources \\[chat\\_ids\\] \\- Add source chats\n` +
+    `• /add\\_destinations \\[chat\\_ids\\] \\- Add destination chats\n` +
     `• /list\\_sources \\- View source chats\n` +
     `• /list\\_destinations \\- View destination chats\n` +
-    `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
-    `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
+    `• /remove\\_sources \\[chat\\_ids\\] \\- Remove source chats\n` +
+    `• /remove\\_destinations \\[chat\\_ids\\] \\- Remove destination chats\n` +
     `• /clear\\_sources \\- Remove all source chats\n` +
     `• /clear\\_destinations \\- Remove all destination chats\n` +
     `• /status \\- Check bot status\n` +
