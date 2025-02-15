@@ -284,44 +284,6 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// Enhanced polling error handler with improved reconnection logic
-let retryCount = 0;
-const maxRetries = 10;
-const baseDelay = 2000;
-let isReconnecting = false;
-
-bot.on('polling_error', async (error) => {
-  if (error.message.includes('EFATAL')) return;
-  
-  if (isReconnecting) return;
-  
-  logger.error('Polling error:', error.message);
-  
-  if (retryCount < maxRetries) {
-    const delay = Math.min(baseDelay * Math.pow(1.5, retryCount), 10000);
-    retryCount++;
-    isReconnecting = true;
-    
-    try {
-      await bot.stopPolling();
-      await new Promise(resolve => setTimeout(resolve, delay));
-      
-      await bot.startPolling();
-      retryCount = 0;
-      isReconnecting = false;
-      logger.info('Successfully reconnected');
-    } catch (reconnectError) {
-      logger.error('Reconnection failed:', reconnectError.message);
-      isReconnecting = false;
-      
-      if (retryCount >= maxRetries) {
-        logger.error('Max retries reached, restarting bot...');
-        process.exit(1);
-      }
-    }
-  }
-});
-
 // Welcome message handler with improved formatting and user tracking
 bot.onText(/^\/start$/, async (msg) => {
   const chatId = msg.chat.id;
@@ -835,7 +797,7 @@ bot.onText(/^\/clear_destinations$/, async (msg) => {
 });
 
 // Status command with enhanced information
-bot.onText(/^\/status$/, async ( /status$/, async (msg) => {
+bot.onText(/^\/status$/, async (msg) => {
   const chatId = msg.chat.id;
   
   // Check force subscribe
@@ -865,7 +827,7 @@ bot.onText(/^\/status$/, async ( /status$/, async (msg) => {
     `• Uptime: ${days}d ${hours}h ${minutes}m ${seconds}s\n` +
     `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
     `*Active Chats:*\n` +
-    `Sources:\n${botConfig.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
+    `Sources:\n${botConfig. sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
     `Destinations:\n${botConfig.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
 
   await bot.sendMessage(chatId, status, { 
@@ -873,7 +835,6 @@ bot.onText(/^\/status$/, async ( /status$/, async (msg) => {
     disable_web_page_preview: true
   });
 });
-)
 
 // Help command with dynamic command list
 bot.onText(/^\/help$/, async (msg) => {
