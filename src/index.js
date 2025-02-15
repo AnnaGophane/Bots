@@ -715,12 +715,38 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
   const isAdmin = config.admins.includes(msg.from.id);
   const requiresAdmin = ['/add_sources', '/add_destinations', '/remove_sources', '/remove_destinations', '/clear_sources', '/clear_destinations', '/broadcast'].some(cmd => text.startsWith(cmd));
   
+  // Silently return if non-admin tries to use admin commands
   if (requiresAdmin && !isAdmin) {
-    await botInstance.sendMessage(chatId, '⚠️ This command requires admin privileges.');
     return;
   }
 
   try {
+    if (text === '/list_sources') {
+      const sources = config.sourceChats.length > 0 
+        ? config.sourceChats.map(id => `• ${id}`).join('\n')
+        : 'No source chats configured';
+      await botInstance.sendMessage(chatId, `📋 *Source Chats:*\n${sources}`, { 
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
+    }
+
+    else if (text === '/list_destinations') {
+      const destinations = config.destinationChats.length > 0
+        ? config.destinationChats.map(id => `• ${id}`).join('\n')
+        : 'No destination chats configured';
+      await botInstance.sendMessage(chatId, `📋 *Destination Chats:*\n${destinations}`, { 
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
+    }
+  } catch (error) {
+    logger.error('Admin command error:', error);
+    await botInstance.sendMessage(chatId, '❌ An error occurred while processing your command. Please try again.');
+  }
+}
+
+try {
     if (text.startsWith('/add_sources')) {
       const sourceIds = text.split(' ').slice(1).map(id => parseInt(id));
       if (sourceIds.length === 0) {
