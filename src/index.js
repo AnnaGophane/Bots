@@ -807,8 +807,8 @@ async function handleHelp(msg) {
     `• /list\\_destinations \\- View destination chats\n` +
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
     `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
-    `• /clear\\_sources \\- Remove all `• /clear\\_sources \\- Remove all source chats\n` +
-    `• /clear\\_destinations \\- Remove all destination chats\n` +
+    `• /clear\\_sources \\- Remove all source chats\n` +
+    `• /clear\ _destinations \\- Remove all destination chats\n` +
     `• /status \\- Check bot status\n` +
     `• /help \\- Show this message\n\n` +
     `*Examples:*\n` +
@@ -1021,4 +1021,3 @@ setInterval(() => {
 }, 60 * 60 * 1000); // Check every hour
 
 logger.info('Bot started successfully with enhanced features');
-}
