@@ -1,16 +1,42 @@
 {
-  "botToken": "",
+  "botToken": "6923456789:ABCdefGHIjklMNOpqrsTUVwxyz123456789",
   "sourceChats": [],
   "destinationChats": [],
   "filters": {
     "keywords": [],
-    "types": []
+    "types": [
+      "text",
+      "photo",
+      "video",
+      "document",
+      "audio",
+      "voice",
+      "video_note",
+      "sticker",
+      "location",
+      "poll",
+      "animation",
+      "contact",
+      "venue",
+      "game",
+      "invoice",
+      "successful_payment",
+      "message",
+      "edited_message",
+      "channel_post",
+      "edited_channel_post"
+    ]
   },
   "rateLimit": {
     "maxMessages": 10,
-    "timeWindow": 60
+    "timeWindow": 10
   },
-  "admins": [],
-  "logChannel": "",
-  "forceSubscribe": []
+  "admins": [5321385511],
+  "users": [],
+  "statistics": {
+    "totalMessages": 0,
+    "forwardedMessages": 0,
+    "failedMessages": 0,
+    "lastReset": "2025-02-15T17:56:17.614Z"
+  }
 }
