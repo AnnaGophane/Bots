@@ -175,6 +175,24 @@ try {
   process.exit(1);
 }
 
+// Track command processing to prevent duplicates
+const processingCommands = new Set();
+
+// Command handler wrapper to prevent duplicate processing
+async function handleCommand(msg, handler) {
+  const commandId = `${msg.chat.id}:${msg.message_id}`;
+  if (processingCommands.has(commandId)) {
+    return;
+  }
+  
+  processingCommands.add(commandId);
+  try {
+    await handler(msg);
+  } finally {
+    processingCommands.delete(commandId);
+  }
+}
+
 // Enhanced message handling middleware
 async function messageMiddleware(msg, next) {
   try {
@@ -269,7 +287,7 @@ bot.on('callback_query', async (query) => {
       };
       
       // Trigger start command
-      bot.emit('message', startMessage);
+      handleCommand(startMessage, handleStart);
     } else {
       await bot.answerCallbackQuery(query.id, {
         text: '❌ Please join all required channels first!',
@@ -280,7 +298,7 @@ bot.on('callback_query', async (query) => {
 });
 
 // Welcome message handler with improved formatting and user tracking
-bot.onText(/^\/start$/, async (msg) => {
+async function handleStart(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const username = escapeMarkdown(msg.from.username || msg.from.first_name);
@@ -332,13 +350,27 @@ bot.onText(/^\/start$/, async (msg) => {
   }
   
   logger.info(`New user started bot: ${userId} (@${msg.from.username || 'N/A'})`);
-});
+}
 
-// Broadcast command with improved error handling and progress tracking
-bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
+// Register command handlers with duplicate prevention
+bot.onText(/^\/start$/, msg => handleCommand(msg, handleStart));
+bot.onText(/^\/broadcast(?:\s+(.+))?$/, msg => handleCommand(msg, handleBroadcast));
+bot.onText(/^\/add_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddSources));
+bot.onText(/^\/add_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddDestinations));
+bot.onText(/^\/list_sources$/, msg => handleCommand(msg, handleListSources));
+bot.onText(/^\/list_destinations$/, msg => handleCommand(msg, handleListDestinations));
+bot.onText(/^\/remove_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveSources));
+bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveDestinations));
+bot.onText(/^\/clear_sources$/, msg => handleCommand(msg, handleClearSources));
+bot.onText(/^\/clear_destinations$/, msg => handleCommand(msg, handleClearDestinations));
+bot.onText(/^\/status$/, msg => handleCommand(msg, handleStatus));
+bot.onText(/^\/help$/, msg => handleCommand(msg, handleHelp));
+
+// Command handler implementations
+async function handleBroadcast(msg) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
-  const message = match?.[1]?.trim();
+  const message = msg.text.split(/\s+(.+)/)[1]?.trim();
   
   // Check if user is admin
   if (!botConfig.admins.includes(userId)) {
@@ -431,12 +463,11 @@ bot.onText(/^\/broadcast(?:\s+(.+))?$/, async (msg, match) => {
     logger.error('Broadcast error:', error);
     await bot.sendMessage(chatId, '❌ An error occurred while broadcasting the message\\.');
   }
-});
+}
 
-// Add sources command with improved validation and error handling
-bot.onText(/^\/add_sources(?:\s+(.+))?$/, async (msg, match) => {
+async function handleAddSources(msg) {
   const chatId = msg.chat.id;
-  const sourceIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  const sourceIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
   
   // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
@@ -499,12 +530,11 @@ bot.onText(/^\/add_sources(?:\s+(.+))?$/, async (msg, match) => {
   }
   
   logger.info(`Sources added - Added: ${added}, Existing: ${existing}, Invalid: ${invalid}`);
-});
+}
 
-// Add destinations command with improved validation and error handling
-bot.onText(/^\/add_destinations(?:\s+(.+))?$/, async (msg, match) => {
+async function handleAddDestinations(msg) {
   const chatId = msg.chat.id;
-  const destIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  const destIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
   
   // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
@@ -567,10 +597,9 @@ bot.onText(/^\/add_destinations(?:\s+(.+))?$/, async (msg, match) => {
   }
   
   logger.info(`Destinations added - Added: ${added}, Existing: ${existing}, Invalid: ${invalid}`);
-});
+}
 
-// List sources command with improved formatting
-bot.onText(/^\/list_sources$/, async (msg) => {
+async function handleListSources(msg) {
   // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
@@ -589,10 +618,9 @@ bot.onText(/^\/list_sources$/, async (msg) => {
     parse_mode: 'Markdown',
     disable_web_page_preview: true
   });
-});
+}
 
-// List destinations command with improved formatting
-bot.onText(/^\/list_destinations$/, async (msg) => {
+async function handleListDestinations(msg) {
   // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
@@ -611,12 +639,11 @@ bot.onText(/^\/list_destinations$/, async (msg) => {
     parse_mode: 'Markdown',
     disable_web_page_preview: true
   });
-});
+}
 
-// Remove sources command with improved validation
-bot.onText(/^\/remove_sources(?:\s+(.+))?$/, async (msg, match) => {
+async function handleRemoveSources(msg) {
   const chatId = msg.chat.id;
-  const sourceIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  const sourceIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
   
   // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
@@ -668,12 +695,11 @@ bot.onText(/^\/remove_sources(?:\s+(.+))?$/, async (msg, match) => {
   }
   
   logger.info(`Sources removed - Removed: ${removed}, Not found: ${notFound}, Invalid: ${invalid}`);
-});
+}
 
-// Remove destinations command with improved validation
-bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, async (msg, match) => {
+async function handleRemoveDestinations(msg) {
   const chatId = msg.chat.id;
-  const destIds = match?.[1]?.split(' ').map(id => parseInt(id)) || [];
+  const destIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
   
   // Check force subscribe
   if (!(await checkForceSubscribe(msg, bot, botConfig))) {
@@ -725,10 +751,9 @@ bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, async (msg, match) => {
   }
   
   logger.info(`Destinations removed - Removed: ${removed}, Not found: ${notFound}, Invalid: ${invalid}`);
-});
+}
 
-// Clear sources command with confirmation
-bot.onText(/^\/clear_sources$/, async (msg) => {
+async function handleClearSources(msg) {
   const chatId = msg.chat.id;
   
   // Check force subscribe
@@ -757,10 +782,9 @@ bot.onText(/^\/clear_sources$/, async (msg) => {
   }
   
   logger.info(`Sources cleared - Count: ${count}`);
-});
+}
 
-// Clear destinations command with confirmation
-bot.onText(/^\/clear_destinations$/, async (msg) => {
+async function handleClearDestinations(msg) {
   const chatId = msg.chat.id;
   
   // Check force subscribe
@@ -789,10 +813,9 @@ bot.onText(/^\/clear_destinations$/, async (msg) => {
   }
   
   logger.info(`Destinations cleared - Count: ${count}`);
-});
+}
 
-// Status command with enhanced information
-bot.onText(/^\/status$/, async (msg) => {
+async function handleStatus(msg) {
   const chatId = msg.chat.id;
   
   // Check force subscribe
@@ -815,7 +838,8 @@ bot.onText(/^\/status$/, async (msg) => {
     `• Message Types: ${botConfig.filters.types.length}\n` +
     `• Rate Limit: ${botConfig.rateLimit.maxMessages} msgs/${botConfig.rateLimit.timeWindow}s\n\n` +
     `*Statistics:*\n` +
-    `• Total Messages: ${botConfig.statistics.totalMessages}\n` + `• Forwarded: ${botConfig.statistics.forwardedMessages}\n` +
+    `• Total Messages: ${botConfig.statistics.totalMessages}\n` +
+    `• Forwarded: ${botConfig.statistics.forwardedMessages}\n` +
     `• Failed: ${botConfig.statistics.failedMessages}\n\n` +
     `*System:*\n` +
     `• Uptime: ${days}d ${hours}h ${minutes}m ${seconds}s\n` +
@@ -828,10 +852,9 @@ bot.onText(/^\/status$/, async (msg) => {
     parse_mode: 'Markdown',
     disable_web_page_preview: true
   });
-});
+}
 
-// Help command with dynamic command list
-bot.onText(/^\/help$/, async (msg) => {
+async function handleHelp(msg) {
   const chatId = msg.chat.id;
   const isAdmin = botConfig.admins.includes(msg.from.id);
   
@@ -870,7 +893,7 @@ bot.onText(/^\/help$/, async (msg) => {
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true
   });
-});
+}
 
 // Save configuration with improved error handling
 function saveConfig() {
