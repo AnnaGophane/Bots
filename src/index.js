@@ -812,9 +812,8 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
         disable_web_page_preview: true
       });
     }
-
+    
     else if (text === '/list_destinations') {
-       else if (text === '/list_destinations') {
       const destinations = config.destinationChats.length > 0
         ? config.destinationChats.map(id => `• ${id}`).join('\n')
         : 'No destination chats configured';
