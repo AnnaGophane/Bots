@@ -176,24 +176,34 @@ try {
 }
 
 // Track processed messages to prevent duplicates
-const processedMessages = new Set();
+const processedMessages = new Map();
 
 // Command handler wrapper to prevent duplicate processing
 async function handleCommand(msg, handler) {
   const messageId = `${msg.chat.id}:${msg.message_id}`;
+  const now = Date.now();
   
-  if (processedMessages.has(messageId)) {
+  // Check if message was processed in the last 5 seconds
+  const lastProcessed = processedMessages.get(messageId);
+  if (lastProcessed && now - lastProcessed < 5000) {
     return;
   }
   
-  processedMessages.add(messageId);
+  // Mark message as processed
+  processedMessages.set(messageId, now);
   
-  // Clean up old messages after 1 minute
+  // Clean up old messages after 10 seconds
   setTimeout(() => {
     processedMessages.delete(messageId);
-  }, 60000);
+  }, 10000);
   
   try {
+    // Check force subscribe first
+    if (!(await checkForceSubscribe(msg, bot, botConfig))) {
+      return;
+    }
+    
+    // Execute the command handler
     await handler(msg);
   } catch (error) {
     logger.error(`Error handling command: ${error.message}`);
@@ -298,11 +308,6 @@ async function handleStart(msg) {
   botConfig.users.add(userId);
   saveConfig();
   
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
   const isAdmin = botConfig.admins.includes(userId);
   
   const welcomeMessage = 
@@ -352,11 +357,6 @@ async function handleBroadcast(msg) {
   if (!botConfig.admins.includes(userId)) {
     await bot.sendMessage(chatId, '⚠️ This command is only available for administrators\\.');
     logger.warn(`Non-admin user ${userId} attempted to use broadcast command`);
-    return;
-  }
-  
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
     return;
   }
   
@@ -445,11 +445,6 @@ async function handleAddSources(msg) {
   const chatId = msg.chat.id;
   const sourceIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
   
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
   if (sourceIds.length === 0) {
     await bot.sendMessage(chatId,
       '❌ Please provide valid chat IDs\\.\n' +
@@ -512,11 +507,6 @@ async function handleAddDestinations(msg) {
   const chatId = msg.chat.id;
   const destIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
   
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
   if (destIds.length === 0) {
     await bot.sendMessage(chatId,
       '❌ Please provide valid chat IDs\\.\n' +
@@ -576,10 +566,7 @@ async function handleAddDestinations(msg) {
 }
 
 async function handleListSources(msg) {
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
+  const chatId = msg.chat.id;
   
   const sources = botConfig.sourceChats.length > 0
     ? botConfig.sourceChats.map(id => `• ${id}`).join('\n')
@@ -590,17 +577,14 @@ async function handleListSources(msg) {
     `${sources}\n\n` +
     `Total: ${botConfig.sourceChats.length}`;
   
-  await bot.sendMessage(msg.chat.id, message, {
+  await bot.sendMessage(chatId, message, {
     parse_mode: 'Markdown',
     disable_web_page_preview: true
   });
 }
 
 async function handleListDestinations(msg) {
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
+  const chatId = msg.chat.id;
   
   const destinations = botConfig.destinationChats.length > 0
     ? botConfig.destinationChats.map(id => `• ${id}`).join('\n')
@@ -611,7 +595,7 @@ async function handleListDestinations(msg) {
     `${destinations}\n\n` +
     `Total: ${botConfig.destinationChats.length}`;
   
-  await bot.sendMessage(msg.chat.id, message, {
+  await bot.sendMessage(chatId, message, {
     parse_mode: 'Markdown',
     disable_web_page_preview: true
   });
@@ -620,11 +604,6 @@ async function handleListDestinations(msg) {
 async function handleRemoveSources(msg) {
   const chatId = msg.chat.id;
   const sourceIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
-  
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
   
   if (sourceIds.length === 0) {
     await bot.sendMessage(chatId,
@@ -677,11 +656,6 @@ async function handleRemoveDestinations(msg) {
   const chatId = msg.chat.id;
   const destIds = msg.text.split(/\s+/).slice(1).map(id => parseInt(id));
   
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
   if (destIds.length === 0) {
     await bot.sendMessage(chatId,
       '❌ Please provide destination chat IDs to remove\\.\n' +
@@ -732,11 +706,6 @@ async function handleRemoveDestinations(msg) {
 async function handleClearSources(msg) {
   const chatId = msg.chat.id;
   
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
   const count = botConfig.sourceChats.length;
   
   if (count === 0) {
@@ -763,11 +732,6 @@ async function handleClearSources(msg) {
 async function handleClearDestinations(msg) {
   const chatId = msg.chat.id;
   
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
-  
   const count = botConfig.destinationChats.length;
   
   if (count === 0) {
@@ -793,11 +757,6 @@ async function handleClearDestinations(msg) {
 
 async function handleStatus(msg) {
   const chatId = msg.chat.id;
-  
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
   
   const uptime = process.uptime();
   const days = Math.floor(uptime / 86400);
@@ -832,12 +791,7 @@ async function handleStatus(msg) {
 
 async function handleHelp(msg) {
   const chatId = msg.chat.id;
-  const isAdmin = botConfig.admins.includes(msg.from .id);
-  
-  // Check force subscribe
-  if (!(await checkForceSubscribe(msg, bot, botConfig))) {
-    return;
-  }
+  const isAdmin = botConfig.admins.includes(msg.from.id);
   
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
@@ -853,7 +807,7 @@ async function handleHelp(msg) {
     `• /list\\_destinations \\- View destination chats\n` +
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
     `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
-    `• /clear\\_sources \\- Remove all source chats\n` +
+    `• /clear\\_sources \\- Remove all `• /clear\\_sources \\- Remove all source chats\n` +
     `• /clear\\_destinations \\- Remove all destination chats\n` +
     `• /status \\- Check bot status\n` +
     `• /help \\- Show this message\n\n` +
@@ -1067,3 +1021,4 @@ setInterval(() => {
 }, 60 * 60 * 1000); // Check every hour
 
 logger.info('Bot started successfully with enhanced features');
+}
