@@ -3,7 +3,7 @@ import { createLogger, format, transports } from 'winston';
 import { config } from 'dotenv';
 import { readFileSync, writeFileSync } from 'fs';
 
-// Configure logger first
+// Configure logger
 const logger = createLogger({
   format: format.combine(
     format.timestamp(),
@@ -18,15 +18,48 @@ const logger = createLogger({
 // Load environment variables
 config();
 
-// Validate bot token with proper error message
+// Validate required environment variables
 if (!process.env.BOT_TOKEN) {
-  logger.error('BOT_TOKEN environment variable is required. Please set it in your .env file.');
+  logger.error('BOT_TOKEN environment variable is required');
   process.exit(1);
+}
+
+// Initialize default configuration
+const defaultConfig = {
+  botToken: process.env.BOT_TOKEN,
+  sourceChats: [],
+  destinationChats: [],
+  filters: {
+    keywords: [],
+    types: ['text', 'photo', 'video', 'document', 'audio', 'voice', 'video_note', 'sticker', 'location', 'poll', 'animation', 'contact', 'venue', 'game', 'invoice', 'successful_payment', 'message', 'edited_message', 'channel_post', 'edited_channel_post']
+  },
+  rateLimit: {
+    maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
+    timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '10')
+  },
+  admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
+  clonedBots: new Map(),
+  logChannel: process.env.LOG_CHANNEL || '',
+  forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
+};
+
+// Load or create configuration
+let botConfig;
+try {
+  const configFile = readFileSync('./config.json', 'utf8');
+  botConfig = {
+    ...defaultConfig,
+    ...JSON.parse(configFile),
+    clonedBots: new Map(JSON.parse(configFile).clonedBots || [])
+  };
+} catch (error) {
+  logger.info('Creating new configuration from environment variables');
+  botConfig = defaultConfig;
+  saveConfig();
 }
 
 // Helper function to validate bot token format
 function isValidBotToken(token) {
-  // Improved regex for bot token validation
   const tokenRegex = /^\d+:[A-Za-z0-9_-]{35,}$/;
   return tokenRegex.test(token.trim());
 }
@@ -36,29 +69,47 @@ function escapeMarkdown(text) {
   return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 }
 
-// Initialize configuration with improved error handling
-let botConfig;
+// Initialize bot with improved error handling and retry logic
+let bot;
 try {
-  botConfig = JSON.parse(readFileSync('./config.json', 'utf8'));
+  const token = process.env.BOT_TOKEN.trim();
+  
+  if (!isValidBotToken(token)) {
+    throw new Error('Invalid bot token format. Please check your token from @BotFather');
+  }
+  
+  bot = new TelegramBot(token, {
+    polling: {
+      interval: 2000,
+      autoStart: true,
+      params: {
+        timeout: 30,
+        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
+        offset: -1
+      }
+    },
+    request: {
+      timeout: 30000,
+      retry: 3,
+      connect_timeout: 10000
+    },
+    webHook: false
+  });
+  
+  // Test connection
+  const me = await bot.getMe();
+  logger.info(`Bot initialized successfully: @${me.username}`);
 } catch (error) {
-  logger.info('Creating new configuration from environment variables');
-  botConfig = {
-    botToken: process.env.BOT_TOKEN,
-    sourceChats: JSON.parse(process.env.SOURCE_CHATS || '[]'),
-    destinationChats: JSON.parse(process.env.DESTINATION_CHATS || '[]'),
-    filters: {
-      keywords: JSON.parse(process.env.FILTER_KEYWORDS || '[]'),
-      types: JSON.parse(process.env.FILTER_TYPES || '["text", "photo", "video", "document", "audio", "voice", "video_note", "sticker", "location", "poll", "animation", "contact", "venue", "game", "invoice", "successful_payment", "message", "edited_message", "channel_post", "edited_channel_post"]')
-    },
-    rateLimit: {
-      maxMessages: parseInt(process.env.RATE_LIMIT_MAX || '10'),
-      timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '10')
-    },
-    admins: JSON.parse(process.env.ADMIN_USERS || '[]'),
-    clonedBots: new Map(),
-    logChannel: process.env.LOG_CHANNEL || '',
-    forceSubscribe: JSON.parse(process.env.FORCE_SUBSCRIBE || '[]')
-  };
+  if (error.message.includes('ETELEGRAM: 404')) {
+    logger.error('Invalid bot token. Please check your token from @BotFather');
+  } else if (error.message.includes('ETELEGRAM: 401')) {
+    logger.error('Unauthorized. The bot token is invalid or has been revoked.');
+  } else if (error.message.includes('Invalid bot token format')) {
+    logger.error(error.message);
+  } else {
+    logger.error('Failed to initialize bot:', error.message);
+  }
+  process.exit(1);
 }
 
 // Add force subscribe check function
@@ -107,49 +158,6 @@ async function checkForceSubscribe(msg, botInstance, config) {
   }
   
   return true;
-}
-
-// Initialize bot with improved error handling and retry logic
-let bot;
-try {
-  const token = process.env.BOT_TOKEN.trim();
-  
-  if (!isValidBotToken(token)) {
-    throw new Error('Invalid bot token format. Please check your token from @BotFather');
-  }
-  
-  bot = new TelegramBot(token, {
-    polling: {
-      interval: 2000,
-      autoStart: true,
-      params: {
-        timeout: 30,
-        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'],
-        offset: -1
-      }
-    },
-    request: {
-      timeout: 30000,
-      retry: 3,
-      connect_timeout: 10000
-    },
-    webHook: false
-  });
-  
-  // Test connection
-  const me = await bot.getMe();
-  logger.info(`Bot initialized successfully: @${me.username}`);
-} catch (error) {
-  if (error.message.includes('ETELEGRAM: 404')) {
-    logger.error('Invalid bot token. Please check your token from @BotFather');
-  } else if (error.message.includes('ETELEGRAM: 401')) {
-    logger.error('Unauthorized. The bot token is invalid or has been revoked.');
-  } else if (error.message.includes('Invalid bot token format')) {
-    logger.error(error.message);
-  } else {
-    logger.error('Failed to initialize bot:', error.message);
-  }
-  process.exit(1);
 }
 
 // Add callback query handler for subscription check button
@@ -789,7 +797,9 @@ async function handleAdminCommands(msg, botInstance = bot, config = botConfig) {
       
       if (config.logChannel) {
         await botInstance.sendMessage(config.logChannel,
-          `Destinations added by ${msg.from.id} (@${msg.from.username || 'N/A'}):\n` +
+          `Destinations added by ${msg.from.id} (@${msg.from.username || 'N/A'}) Here's the continuation of the index.js file from where we left off:
+
+):\n` +
           `Added: ${added}\nSkipped: ${skipped}`
         );
       }
