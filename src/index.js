@@ -812,7 +812,6 @@ async function handleHelp(msg) {
     `📚 *Available Commands*\n\n` +
     `${adminCommands}` +
     `*General Commands:*\n` +
-    `• /add\\_sources [chat\\_ids]  ```javascript
     `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
     `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
     `• /list\\_sources \\- View source chats\n` +
