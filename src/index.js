@@ -802,6 +802,8 @@ async function handleHelp(msg) {
   const chatId = msg.chat.id;
   const isAdmin = botConfig.admins.includes(msg.from.id);
   
+  const adminCommands = isAdmin ? Continuing exactly from where we left off with the handleHelp function and remaining code:
+
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
     `• /broadcast [message] \\- Send message to all users\n` +
@@ -813,8 +815,7 @@ async function handleHelp(msg) {
     `*General Commands:*\n` +
     `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
     `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
-    `• /list\\_sources \\- View source chats Continuing exactly where we left off:
-
+    `• /list\\_sources \\- View source chats\n` +
     `• /list\\_destinations \\- View destination chats\n` +
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
     `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
