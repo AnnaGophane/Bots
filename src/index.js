@@ -322,14 +322,12 @@ async function handleStart(msg) {
     `• /remove\\_destinations \\- Remove multiple destination chats\n` +
     `• /clear\\_sources \\- Remove all source chats\n` +
     `• /clear\\_destinations \\- Remove all destination chats\n` +
-    `• /clone \\- Clone this bot with your token\n` +
-    (isAdmin ? `• /status \\- Check bot status\n` : '') +
+    `• /status \\- Check bot status\n` +
     `• /help \\- Show all commands\n\n` +
     (isAdmin ? `*Admin Commands:*\n• /broadcast \\- Send message to all users\n\n` : '') +
     `*Examples:*\n` +
     `• Add sources: /add\\_sources \\-100123456789 \\-100987654321\n` +
-    `• Add destinations: /add\\_destinations \\-100123456789 \\-100987654321\n` +
-    `• Clone bot: /clone BOT\\_TOKEN\n\n` +
+    `• Add destinations: /add\\_destinations \\-100123456789 \\-100987654321\n\n` +
     `Note: Some commands require admin privileges\\.`;
   
   await bot.sendMessage(chatId, welcomeMessage, {
@@ -759,14 +757,6 @@ async function handleClearDestinations(msg) {
 
 async function handleStatus(msg) {
   const chatId = msg.chat.id;
-  const userId = msg.from.id;
-
-  // Check if user is admin
-  if (!botConfig.admins.includes(userId)) {
-    await bot.sendMessage(chatId, '⚠️ This command is only available for administrators\\.');
-    logger.warn(`Non-admin user ${userId} attempted to use status command`);
-    return;
-  }
   
   const uptime = process.uptime();
   const days = Math.floor(uptime / 86400);
@@ -805,282 +795,33 @@ async function handleHelp(msg) {
   
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
-    `• /broadcast [message] \\- Send message to all users\n` +
-    `• /status \\- Check bot status\n\n` : '';
+    `• /broadcast [message] \\- Send message to all users\n\n` : '';
   
   const helpMessage = 
     `📚 *Available Commands*\n\n` +
     `${adminCommands}` +
     `*General Commands:*\n` +
     `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
-    `• /add_destinations [chat_ids] \\- Add destination chats\n` +
+    `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
     `• /list\\_sources \\- View source chats\n` +
     `• /list\\_destinations \\- View destination chats\n` +
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
     `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
     `• /clear\\_sources \\- Remove all source chats\n` +
-    `• /clear\\_destinations \\- Remove all destination chats\n` +
-    `• /clone [bot\\_token] \\- Clone this bot\n` +
+    `• /clear\ _destinations \\- Remove all destination chats\n` +
+    `• /status \\- Check bot status\n` +
     `• /help \\- Show this message\n\n` +
     `*Examples:*\n` +
     `• Add sources:\n` +
     `/add\\_sources \\-100123456789 \\-100987654321\n\n` +
     `• Add destinations:\n` +
     `/add\\_destinations \\-100123456789 \\-100987654321\n\n` +
-    `• Clone bot:\n` +
-    `/clone BOT\\_TOKEN\n\n` +
     `• Broadcast \\(admin only\\):\n` +
     `/broadcast Hello everyone\\!`;
   
   await bot.sendMessage(chatId, helpMessage, {
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true
-  });
-}
-
-// Add clone command handler with independent configuration
-async function handleClone(msg) {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id;
-  const token = msg.text.split(/\s+/)[1]?.trim();
-
-  if (!token) {
-    await bot.sendMessage(chatId,
-      '❌ Please provide a bot token\\.\n' +
-      'Format: `/clone BOT_TOKEN`',
-      { parse_mode: 'MarkdownV2' }
-    );
-    return;
-  }
-
-  try {
-    // Validate token format
-    if (!isValidBotToken(token)) {
-      await bot.sendMessage(chatId, '❌ Invalid bot token format\\. Please check your token from @BotFather');
-      return;
-    }
-
-    // Check if bot is already cloned
-    if (botConfig.clonedBots.has(token)) {
-      await bot.sendMessage(chatId, '⚠️ This bot is already cloned\\.');
-      return;
-    }
-
-    // Create independent configuration for cloned bot
-    const clonedConfig = {
-      botToken: token,
-      sourceChats: [],
-      destinationChats: [],
-      filters: {
-        keywords: [],
-        types: [
-          'text',
-          'photo',
-          'video',
-          'document',
-          'audio',
-          'voice',
-          'video_note',
-          'sticker',
-          'location',
-          'poll',
-          'animation',
-          'contact',
-          'venue',
-          'game',
-          'invoice',
-          'successful_payment',
-          'message',
-          'edited_message',
-          'channel_post',
-          'edited_channel_post'
-        ]
-      },
-      rateLimit: {
-        maxMessages: 10,
-        timeWindow: 10
-      },
-      admins: [userId], // Set creator as admin
-      users: new Set([userId]),
-      statistics: {
-        totalMessages: 0,
-        forwardedMessages: 0,
-        failedMessages: 0,
-        lastReset: new Date()
-      }
-    };
-
-    // Initialize new bot instance with independent configuration
-    const clonedBot = new TelegramBot(token, {
-      polling: {
-        interval: 2000,
-        autoStart: true,
-        params: {
-          timeout: 30,
-          allowed_updates: [
-            'message',
-            'edited_message',
-            'channel_post',
-            'edited_channel_post',
-            'callback_query'
-          ]
-        }
-      }
-    });
-
-    // Test connection
-    const botInfo = await clonedBot.getMe();
-    
-    // Store cloned bot info
-    botConfig.clonedBots.set(token, {
-      username: botInfo.username,
-      createdBy: userId,
-      createdAt: new Date().toISOString(),
-      config: clonedConfig
-    });
-
-    // Set up command handlers for cloned bot
-    setupBotHandlers(clonedBot, clonedConfig);
-
-    saveConfig();
-
-    await bot.sendMessage(chatId,
-      `✅ Bot cloned successfully\\!\n` +
-      `Username: @${botInfo.username}\n\n` +
-      `The cloned bot has been initialized with a fresh configuration\\. ` +
-      `You are set as its administrator\\. Start the cloned bot and use /help to see available commands\\.`,
-      { parse_mode: 'MarkdownV2' }
-    );
-
-    // Log clone
-    if (botConfig.logChannel) {
-      await bot.sendMessage(botConfig.logChannel,
-        `New bot cloned:\n` +
-        `By: ${userId} (@${msg.from.username || 'N/A'})\n` +
-        `Bot: @${botInfo.username}`
-      );
-    }
-
-    logger.info(`Bot cloned - User: ${userId}, Bot: @${botInfo.username}`);
-  } catch (error) {
-    logger.error('Clone error:', error);
-    
-    let errorMessage = '❌ Failed to clone bot\\. ';
-    
-    if (error.message.includes('401')) {
-      errorMessage += 'Invalid bot token\\.';
-    } else if (error.message.includes('409')) {
-      errorMessage += 'Bot is already in use\\.';
-    } else {
-      errorMessage += 'Please try again later\\.';
-    }
-
-    await bot.sendMessage(chatId, errorMessage, { parse_mode: 'MarkdownV2' });
-  }
-}
-
-// Function to set up command handlers for a bot instance
-function setupBotHandlers(botInstance, config) {
-  // Wrapper for command handling with duplicate prevention
-  const handleBotCommand = async (msg, handler) => {
-    const messageId = `${msg.chat.id}:${msg.message_id}`;
-    const now = Date.now();
-    
-    // Check if message was processed in the last 5 seconds
-    const lastProcessed = processedMessages.get(messageId);
-    if (lastProcessed && now - lastProcessed < 5000) {
-      return;
-    }
-    
-    // Mark message as processed
-    processedMessages.set(messageId, now);
-    
-    // Clean up old messages after 10 seconds
-    setTimeout(() => {
-      processedMessages.delete(messageId);
-    }, 10000);
-    
-    try {
-      // Check force subscribe first
-      if (!(await checkForceSubscribe(msg, botInstance, config))) {
-        return;
-      }
-      
-      // Execute the command handler with the bot's config
-      await handler(msg, botInstance, config);
-    } catch (error) {
-      logger.error(`Error handling command for bot ${botInstance.token}: ${error.message}`);
-    }
-  };
-
-  // Register command handlers for the bot instance
-  botInstance.onText(/^\/start$/, msg => handleBotCommand(msg, handleStart));
-  botInstance.onText(/^\/broadcast(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleBroadcast));
-  botInstance.onText(/^\/add_sources(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleAddSources));
-  botInstance.onText(/^\/add_destinations(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleAddDestinations));
-  botInstance.onText(/^\/list_sources$/, msg => handleBotCommand(msg, handleListSources));
-  botInstance.onText(/^\/list_destinations$/, msg => handleBotCommand(msg, handleListDestinations));
-  botInstance.onText(/^\/remove_sources(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleRemoveSources));
-  botInstance.onText(/^\/remove_destinations(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleRemoveDestinations));
-  botInstance.onText(/^\/clear_sources$/, msg => handleBotCommand(msg, handleClearSources));
-  botInstance.onText(/^\/clear_destinations$/, msg => handleBotCommand(msg, handleClearDestinations));
-  botInstance.onText(/^\/status$/, msg => handleBotCommand(msg, handleStatus));
-  botInstance.onText(/^\/help$/, msg => handleBotCommand(msg, handleHelp));
-  botInstance.onText(/^\/clone(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleClone));
-
-  // Set up channel post handler for message forwarding
-  botInstance.on('channel_post', async (msg) => {
-    try {
-      // Check if post is from a source chat
-      if (!config.sourceChats.includes(msg.chat.id)) {
-        logger.debug(`Channel post from non-source chat: ${msg.chat.id}`);
-        return;
-      }
-      
-      logger.info(`Processing channel post ${msg.message_id} from chat ${msg.chat.id}`);
-      
-      // Check rate limit
-      if (!checkRateLimit(msg.chat.id, config)) {
-        logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
-        return;
-      }
-      
-      // Check message filters
-      if (!matchesFilters(msg, config)) {
-        logger.info(`Channel post filtered: ${msg.message_id}`);
-        return;
-      }
-      
-      // Forward to all destination chats
-      for (const destId of config.destinationChats) {
-        try {
-          logger.info(`Attempting to forward channel post ${msg.message_id} to ${destId}`);
-          
-          // Use copyMessage to avoid forwarded tag
-          await botInstance.copyMessage(destId, msg.chat.id, msg.message_id, {
-            disable_notification: false,
-            protect_content: false
-          });
-          
-          config.statistics.forwardedMessages++;
-          logger.info(`Successfully forwarded channel post ${msg.message_id} to ${destId}`);
-        } catch (error) {
-          config.statistics.failedMessages++;
-          logger.error(`Failed to forward channel post ${msg.message_id} to ${destId}: ${error.message}`);
-        }
-      }
-      
-      saveConfig();
-    } catch (error) {
-      logger.error(`Channel post forward error for bot ${botInstance.token}:`, error);
-    }
-  });
-
-  // Error handling
-  botInstance.on('polling_error', (error) => {
-    if (!error.message.includes('EFATAL')) {
-      logger.error(`Polling error for bot ${botInstance.token}:`, error.message);
-    }
   });
 }
 
@@ -1097,7 +838,6 @@ bot.onText(/^\/clear_sources$/, msg => handleCommand(msg, handleClearSources));
 bot.onText(/^\/clear_destinations$/, msg => handleCommand(msg, handleClearDestinations));
 bot.onText(/^\/status$/, msg => handleCommand(msg, handleStatus));
 bot.onText(/^\/help$/, msg => handleCommand(msg, handleHelp));
-bot.onText(/^\/clone(?:\s+(.+))?$/, msg => handleCommand(msg, handleClone));
 
 // Save configuration with improved error handling
 function saveConfig() {
@@ -1117,14 +857,14 @@ function saveConfig() {
 // Rate limiting with improved cleanup
 const messageCounter = new Map();
 
-function checkRateLimit(chatId, config) {
+function checkRateLimit(chatId) {
   const now = Date.now();
   const chatMessages = messageCounter.get(chatId) || [];
   const recentMessages = chatMessages.filter(
-    timestamp => now - timestamp < config.rateLimit.timeWindow * 1000
+    timestamp => now - timestamp < botConfig.rateLimit.timeWindow * 1000
   );
   
-  if (recentMessages.length >= config.rateLimit.maxMessages) {
+  if (recentMessages.length >= botConfig.rateLimit.maxMessages) {
     return false;
   }
   
@@ -1132,17 +872,18 @@ function checkRateLimit(chatId, config) {
   messageCounter.set(chatId, recentMessages);
   
   // Cleanup old entries
-  if (recentMessages.length > config.rateLimit.maxMessages * 2) {
-    messageCounter.set(chatId, recentMessages.slice(-config.rateLimit.maxMessages));
+  if (recentMessages.length > botConfig.rateLimit.maxMessages * 2) {
+    messageCounter.set(chatId, recentMessages.slice(-botConfig.rateLimit.maxMessages));
   }
   
   return true;
 }
 
 // Message filter with improved type checking
-function matchesFilters(msg, config) {
+function matchesFilters(msg) {
+  // Check for channel posts
   const messageType = Object.keys(msg).find(key => 
-    config.filters.types.includes(key)
+    botConfig.filters.types.includes(key)
   );
   
   if (!messageType) {
@@ -1150,8 +891,8 @@ function matchesFilters(msg, config) {
     return false;
   }
   
-  if (messageType === 'text' && config.filters.keywords.length > 0) {
-    const hasKeyword = config.filters.keywords.some(keyword =>
+  if (messageType === 'text' && botConfig.filters.keywords.length > 0) {
+    const hasKeyword = botConfig.filters.keywords.some(keyword =>
       msg.text.toLowerCase().includes(keyword.toLowerCase())
     );
     if (!hasKeyword) {
@@ -1162,6 +903,68 @@ function matchesFilters(msg, config) {
   
   return true;
 }
+
+// Forward messages with improved error handling and logging
+bot.on('channel_post', async (msg) => {
+  try {
+    // Check if post is from a source chat
+    if (!botConfig.sourceChats.includes(msg.chat.id)) {
+      logger.debug(`Channel post from non-source chat: ${msg.chat.id}`);
+      return;
+    }
+    
+    logger.info(`Processing channel post ${msg.message_id} from chat ${msg.chat.id}`);
+    
+    // Check rate limit
+    if (!checkRateLimit(msg.chat.id)) {
+      logger.warn(`Rate limit exceeded for chat ${msg.chat.id}`);
+      return;
+    }
+    
+    // Check message filters
+    if (!matchesFilters(msg)) {
+      logger.info(`Channel post filtered: ${msg.message_id}`);
+      return;
+    }
+    
+    // Forward to all destination chats
+    for (const destId of botConfig.destinationChats) {
+      try {
+        logger.info(`Attempting to forward channel post ${msg.message_id} to ${destId}`);
+        
+        // Use copyMessage to avoid forwarded tag
+        await bot.copyMessage(destId, msg.chat.id, msg.message_id, {
+          disable_notification: false,
+          protect_content: false
+        });
+        
+        botConfig.statistics.forwardedMessages++;
+        logger.info(`Successfully forwarded channel post ${msg.message_id} to ${destId}`);
+      } catch (error) {
+        botConfig.statistics.failedMessages++;
+        logger.error(`Failed to forward channel post ${msg.message_id} to ${destId}: ${error.message}`);
+        
+        // Check specific error cases
+        if (error.response?.body?.error_code === 403) {
+          logger.error(`Bot lacks permission in chat ${destId}. Please ensure bot is admin with post permissions.`);
+        } else if (error.response?.body?.error_code === 400) {
+          logger.error(`Bad request when forwarding to ${destId}: ${error.response.body.description}`);
+        }
+      }
+    }
+    
+    saveConfig();
+  } catch (error) {
+    logger.error('Channel post forward error:', error);
+  }
+});
+
+// Error handling with improved logging
+bot.on('polling_error', (error) => {
+  if (!error.message.includes('EFATAL')) {
+    logger.error('Polling error:', error.message);
+  }
+});
 
 // Process error handling with improved logging
 process.on('unhandledRejection', (error) => {
