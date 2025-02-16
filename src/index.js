@@ -1218,4 +1218,3 @@ setInterval(() => {
 }, 60 * 60 * 1000); // Check every hour
 
 logger.info('Bot started successfully with enhanced features');
-}
