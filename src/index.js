@@ -128,41 +128,60 @@ function escapeMarkdown(text) {
 
 // Initialize bot with improved error handling and retry logic
 let bot;
-try {
-  const token = process.env.BOT_TOKEN.trim();
-  
-  if (!isValidBotToken(token)) {
-    throw new Error('Invalid bot token format. Please check your token from @BotFather');
+let isPolling = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY = 5000;
+
+async function initializeBot() {
+  try {
+    const token = process.env.BOT_TOKEN.trim();
+    
+    if (!isValidBotToken(token)) {
+      throw new Error('Invalid bot token format. Please check your token from @BotFather');
+    }
+    
+    bot = new TelegramBot(token, {
+      polling: {
+        interval: 2000,
+        autoStart: true,
+        params: {
+          timeout: 30,
+          allowed_updates: [
+            'message',
+            'edited_message',
+            'channel_post',
+            'edited_channel_post',
+            'callback_query'
+          ],
+          offset: -1
+        }
+      },
+      request: {
+        timeout: 30000,
+        retry: 3,
+        connect_timeout: 10000
+      },
+      webHook: false
+    });
+    
+    // Test connection
+    const me = await bot.getMe();
+    logger.info(`Bot initialized successfully: @${me.username}`);
+    isPolling = true;
+    reconnectAttempts = 0;
+    
+    // Set up error handlers
+    setupErrorHandlers();
+    
+    return true;
+  } catch (error) {
+    handleInitializationError(error);
+    return false;
   }
-  
-  bot = new TelegramBot(token, {
-    polling: {
-      interval: 2000,
-      autoStart: true,
-      params: {
-        timeout: 30,
-        allowed_updates: [
-          'message',
-          'edited_message',
-          'channel_post',
-          'edited_channel_post',
-          'callback_query'
-        ],
-        offset: -1
-      }
-    },
-    request: {
-      timeout: 30000,
-      retry: 3,
-      connect_timeout: 10000
-    },
-    webHook: false
-  });
-  
-  // Test connection
-  const me = await bot.getMe();
-  logger.info(`Bot initialized successfully: @${me.username}`);
-} catch (error) {
+}
+
+function handleInitializationError(error) {
   if (error.message.includes('ETELEGRAM: 404')) {
     logger.error('Invalid bot token. Please check your token from @BotFather');
   } else if (error.message.includes('ETELEGRAM: 401')) {
@@ -172,8 +191,56 @@ try {
   } else {
     logger.error('Failed to initialize bot:', error.message);
   }
-  process.exit(1);
 }
+
+function setupErrorHandlers() {
+  // Improved polling error handler with exponential backoff
+  bot.on('polling_error', async (error) => {
+    if (error.message.includes('EFATAL')) return;
+    
+    logger.error('Polling error:', error.message);
+    isPolling = false;
+    
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      const delay = Math.min(RECONNECT_DELAY * Math.pow(2, reconnectAttempts), 300000); // Max 5 minutes
+      reconnectAttempts++;
+      
+      logger.info(`Attempting to reconnect in ${delay/1000} seconds (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+      
+      setTimeout(async () => {
+        try {
+          await bot.stopPolling();
+          await bot.startPolling();
+          isPolling = true;
+          logger.info('Polling restarted successfully');
+        } catch (e) {
+          logger.error('Failed to restart polling:', e.message);
+        }
+      }, delay);
+    } else {
+      logger.error('Max reconnection attempts reached. Please check your internet connection and bot token.');
+      process.exit(1);
+    }
+  });
+  
+  // Connection monitoring
+  setInterval(async () => {
+    if (!isPolling) {
+      logger.warn('Polling appears to be stopped. Attempting to restart...');
+      try {
+        await bot.stopPolling();
+        await bot.startPolling();
+        isPolling = true;
+        logger.info('Polling restarted successfully from monitoring check');
+      } catch (error) {
+        logger.error('Failed to restart polling from monitoring check:', error.message);
+      }
+    }
+  }, 30000); // Check every 30 seconds
+}
+
+// Initialize the bot
+await initializeBot();
 
 // Track processed messages to prevent duplicates
 const processedMessages = new Map();
@@ -775,7 +842,7 @@ async function handleStatus(msg) {
     `🤖 *Bot Status*\n\n` +
     `*Configuration:*\n` +
     `• Sources: ${botConfig.sourceChats.length}\n` +
-    `• Destinations: ${botConfig.destinationChats.length}\n` +
+    `• Destinations: ${botConfig.destination Chats.length}\n` +
     `• Keywords: ${botConfig.filters.keywords.length}\n` +
     `• Message Types: ${botConfig.filters.types.length}\n` +
     `• Rate Limit: ${botConfig.rateLimit.maxMessages} msgs/${botConfig.rateLimit.timeWindow}s\n\n` +
@@ -785,7 +852,9 @@ async function handleStatus(msg) {
     `• Failed: ${botConfig.statistics.failedMessages}\n\n` +
     `*System:*\n` +
     `• Uptime: ${days}d ${hours}h ${minutes}m ${seconds}s\n` +
-    `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
+    `• Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n` +
+    `• Polling Status: ${isPolling ? '✅ Active' : '❌ Inactive'}\n` +
+    `• Reconnect Attempts: ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}\n\n` +
     `*Active Chats:*\n` +
     `Sources:\n${botConfig.sourceChats.map(id => `• ${id}`).join('\n') || 'None'}\n\n` +
     `Destinations:\n${botConfig.destinationChats.map(id => `• ${id}`).join('\n') || 'None'}`;
@@ -800,7 +869,7 @@ async function handleStatus(msg) {
 
 async function handleHelp(msg) {
   const chatId = msg.chat.id;
-  const isAdmin = botConfig.admins.includes(msg.from .id);
+  const isAdmin = botConfig.admins.includes(msg.from.id);
   
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
@@ -967,26 +1036,6 @@ bot.on('channel_post', async (msg) => {
     logger.error('Channel post forward error:', error);
   }
 });
-
-// Improved polling error handler
-function handlePollingError(error) {
-  if (!error.message.includes('EFATAL')) {
-    logger.error('Polling error:', error.message);
-    
-    // Attempt to restart polling after a delay
-    setTimeout(() => {
-      try {
-        bot.startPolling();
-        logger.info('Polling restarted successfully');
-      } catch (e) {
-        logger.error('Failed to restart polling:', e.message);
-      }
-    }, 5000);
-  }
-}
-
-// Error handling with improved logging
-bot.on('polling_error', handlePollingError);
 
 // Process error handling with improved logging
 process.on('unhandledRejection', (error) => {
