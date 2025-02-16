@@ -812,8 +812,9 @@ async function handleHelp(msg) {
     `📚 *Available Commands*\n\n` +
     `${adminCommands}` +
     `*General Commands:*\n` +
+    `• /add\\_sources [chat\\_ids]  ```javascript
     `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
-    `• /add_destinations [chat_ids] \\- Add destination chats\n` +
+    `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
     `• /list\\_sources \\- View source chats\n` +
     `• /list\\_destinations \\- View destination chats\n` +
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
@@ -873,28 +874,7 @@ async function handleClone(msg) {
       destinationChats: [],
       filters: {
         keywords: [],
-        types: [
-          'text',
-          'photo',
-          'video',
-          'document',
-          'audio',
-          'voice',
-          'video_note',
-          'sticker',
-          'location',
-          'poll',
-          'animation',
-          'contact',
-          'venue',
-          'game',
-          'invoice',
-          'successful_payment',
-          'message',
-          'edited_message',
-          'channel_post',
-          'edited_channel_post'
-        ]
+        types: botConfig.filters.types.slice()
       },
       rateLimit: {
         maxMessages: 10,
@@ -981,52 +961,20 @@ async function handleClone(msg) {
 
 // Function to set up command handlers for a bot instance
 function setupBotHandlers(botInstance, config) {
-  // Wrapper for command handling with duplicate prevention
-  const handleBotCommand = async (msg, handler) => {
-    const messageId = `${msg.chat.id}:${msg.message_id}`;
-    const now = Date.now();
-    
-    // Check if message was processed in the last 5 seconds
-    const lastProcessed = processedMessages.get(messageId);
-    if (lastProcessed && now - lastProcessed < 5000) {
-      return;
-    }
-    
-    // Mark message as processed
-    processedMessages.set(messageId, now);
-    
-    // Clean up old messages after 10 seconds
-    setTimeout(() => {
-      processedMessages.delete(messageId);
-    }, 10000);
-    
-    try {
-      // Check force subscribe first
-      if (!(await checkForceSubscribe(msg, botInstance, config))) {
-        return;
-      }
-      
-      // Execute the command handler with the bot's config
-      await handler(msg, botInstance, config);
-    } catch (error) {
-      logger.error(`Error handling command for bot ${botInstance.token}: ${error.message}`);
-    }
-  };
-
-  // Register command handlers for the bot instance
-  botInstance.onText(/^\/start$/, msg => handleBotCommand(msg, handleStart));
-  botInstance.onText(/^\/broadcast(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleBroadcast));
-  botInstance.onText(/^\/add_sources(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleAddSources));
-  botInstance.onText(/^\/add_destinations(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleAddDestinations));
-  botInstance.onText(/^\/list_sources$/, msg => handleBotCommand(msg, handleListSources));
-  botInstance.onText(/^\/list_destinations$/, msg => handleBotCommand(msg, handleListDestinations));
-  botInstance.onText(/^\/remove_sources(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleRemoveSources));
-  botInstance.onText(/^\/remove_destinations(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleRemoveDestinations));
-  botInstance.onText(/^\/clear_sources$/, msg => handleBotCommand(msg, handleClearSources));
-  botInstance.onText(/^\/clear_destinations$/, msg => handleBotCommand(msg, handleClearDestinations));
-  botInstance.onText(/^\/status$/, msg => handleBotCommand(msg, handleStatus));
-  botInstance.onText(/^\/help$/, msg => handleBotCommand(msg, handleHelp));
-  botInstance.onText(/^\/clone(?:\s+(.+))?$/, msg => handleBotCommand(msg, handleClone));
+  // Register command handlers with duplicate prevention
+  botInstance.onText(/^\/start$/, msg => handleCommand(msg, handleStart));
+  botInstance.onText(/^\/broadcast(?:\s+(.+))?$/, msg => handleCommand(msg, handleBroadcast));
+  botInstance.onText(/^\/add_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddSources));
+  botInstance.onText(/^\/add_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddDestinations));
+  botInstance.onText(/^\/list_sources$/, msg => handleCommand(msg, handleListSources));
+  botInstance.onText(/^\/list_destinations$/, msg => handleCommand(msg, handleListDestinations));
+  botInstance.onText(/^\/remove_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveSources));
+  botInstance.onText(/^\/remove_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveDestinations));
+  botInstance.onText(/^\/clear_sources$/, msg => handleCommand(msg, handleClearSources));
+  botInstance.onText(/^\/clear_destinations$/, msg => handleCommand(msg, handleClearDestinations));
+  botInstance.onText(/^\/status$/, msg => handleCommand(msg, handleStatus));
+  botInstance.onText(/^\/help$/, msg => handleCommand(msg, handleHelp));
+  botInstance.onText(/^\/clone(?:\s+(.+))?$/, msg => handleCommand(msg, handleClone));
 
   // Set up channel post handler for message forwarding
   botInstance.on('channel_post', async (msg) => {
@@ -1083,21 +1031,6 @@ function setupBotHandlers(botInstance, config) {
     }
   });
 }
-
-// Register command handlers with duplicate prevention
-bot.onText(/^\/start$/, msg => handleCommand(msg, handleStart));
-bot.onText(/^\/broadcast(?:\s+(.+))?$/, msg => handleCommand(msg, handleBroadcast));
-bot.onText(/^\/add_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddSources));
-bot.onText(/^\/add_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleAddDestinations));
-bot.onText(/^\/list_sources$/, msg => handleCommand(msg, handleListSources));
-bot.onText(/^\/list_destinations$/, msg => handleCommand(msg, handleListDestinations));
-bot.onText(/^\/remove_sources(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveSources));
-bot.onText(/^\/remove_destinations(?:\s+(.+))?$/, msg => handleCommand(msg, handleRemoveDestinations));
-bot.onText(/^\/clear_sources$/, msg => handleCommand(msg, handleClearSources));
-bot.onText(/^\/clear_destinations$/, msg => handleCommand(msg, handleClearDestinations));
-bot.onText(/^\/status$/, msg => handleCommand(msg, handleStatus));
-bot.onText(/^\/help$/, msg => handleCommand(msg, handleHelp));
-bot.onText(/^\/clone(?:\s+(.+))?$/, msg => handleCommand(msg, handleClone));
 
 // Save configuration with improved error handling
 function saveConfig() {
