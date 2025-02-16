@@ -322,9 +322,8 @@ async function handleStart(msg) {
     `• /remove\\_destinations \\- Remove multiple destination chats\n` +
     `• /clear\\_sources \\- Remove all source chats\n` +
     `• /clear\\_destinations \\- Remove all destination chats\n` +
-    `• /status \\- Check bot status\n` +
     `• /help \\- Show all commands\n\n` +
-    (isAdmin ? `*Admin Commands:*\n• /broadcast \\- Send message to all users\n\n` : '') +
+    (isAdmin ? `*Admin Commands:*\n• /broadcast \\- Send message to all users\n• /status \\- Check bot status\n\n` : '') +
     `*Examples:*\n` +
     `• Add sources: /add\\_sources \\-100123456789 \\-100987654321\n` +
     `• Add destinations: /add\\_destinations \\-100123456789 \\-100987654321\n\n` +
@@ -757,6 +756,14 @@ async function handleClearDestinations(msg) {
 
 async function handleStatus(msg) {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
+
+  // Check if user is admin
+  if (!botConfig.admins.includes(userId)) {
+    await bot.sendMessage(chatId, '⚠️ This command is only available for administrators.');
+    logger.warn(`Non-admin user ${userId} attempted to use status command`);
+    return;
+  }
   
   const uptime = process.uptime();
   const days = Math.floor(uptime / 86400);
@@ -787,15 +794,21 @@ async function handleStatus(msg) {
     parse_mode: 'Markdown',
     disable_web_page_preview: true
   });
+
+  // Log admin status check
+  logger.info(`Admin ${userId} checked bot status`);
 }
 
 async function handleHelp(msg) {
   const chatId = msg.chat.id;
   const isAdmin = botConfig.admins.includes(msg.from.id);
   
+  const adminCommands = isAdmin Continuing from where we left off:
+
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
-    `• /broadcast [message] \\- Send message to all users\n\n` : '';
+    `• /broadcast [message] \\- Send message to all users\n` +
+    `• /status \\- Check detailed bot status\n\n` : '';
   
   const helpMessage = 
     `📚 *Available Commands*\n\n` +
@@ -808,8 +821,7 @@ async function handleHelp(msg) {
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
     `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
     `• /clear\\_sources \\- Remove all source chats\n` +
-    `• /clear\ _destinations \\- Remove all destination chats\n` +
-    `• /status \\- Check bot status\n` +
+    `• /clear\\_destinations \\- Remove all destination chats\n` +
     `• /help \\- Show this message\n\n` +
     `*Examples:*\n` +
     `• Add sources:\n` +
