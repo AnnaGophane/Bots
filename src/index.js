@@ -842,7 +842,7 @@ async function handleStatus(msg) {
     `🤖 *Bot Status*\n\n` +
     `*Configuration:*\n` +
     `• Sources: ${botConfig.sourceChats.length}\n` +
-    `• Destinations: ${botConfig.destination Chats.length}\n` +
+    `• Destinations: ${botConfig.destinationChats.length}\n` +
     `• Keywords: ${botConfig.filters.keywords.length}\n` +
     `• Message Types: ${botConfig.filters.types.length}\n` +
     `• Rate Limit: ${botConfig.rateLimit.maxMessages} msgs/${botConfig.rateLimit.timeWindow}s\n\n` +
