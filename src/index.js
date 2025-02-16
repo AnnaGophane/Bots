@@ -813,7 +813,7 @@ async function handleHelp(msg) {
     `${adminCommands}` +
     `*General Commands:*\n` +
     `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
-    `• / `• /add_destinations [chat_ids] \\- Add destination chats\n` +
+    `• /add_destinations [chat_ids] \\- Add destination chats\n` +
     `• /list\\_sources \\- View source chats\n` +
     `• /list\\_destinations \\- View destination chats\n` +
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
