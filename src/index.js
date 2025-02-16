@@ -795,7 +795,6 @@ async function handleStatus(msg) {
     disable_web_page_preview: true
   });
 
-  // Log admin status check
   logger.info(`Admin ${userId} checked bot status`);
 }
 
@@ -803,12 +802,12 @@ async function handleHelp(msg) {
   const chatId = msg.chat.id;
   const isAdmin = botConfig.admins.includes(msg.from.id);
   
-  const adminCommands = isAdmin Continuing from where we left off:
+  const adminCommands Continuing exactly where we left off with the handleHelp function:
 
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
     `• /broadcast [message] \\- Send message to all users\n` +
-    `• /status \\- Check detailed bot status\n\n` : '';
+    `• /status \\- Check bot status\n\n` : '';
   
   const helpMessage = 
     `📚 *Available Commands*\n\n` +
