@@ -800,12 +800,12 @@ async function handleStatus(msg) {
 
 async function handleHelp(msg) {
   const chatId = msg.chat.id;
-  const isAdmin = botConfig.admins.includes(msg.from.id);
+  const isAdmin = botConfig.admins.includes(msg.from .id);
   
   const adminCommands = isAdmin ? 
     `*Admin Commands:*\n` +
     `• /broadcast [message] \\- Send message to all users\n` +
-    `• /status \\- Check detailed bot status\n\n` : '';
+    `• /status \\- Check bot status\n\n` : '';
   
   const helpMessage = 
     `📚 *Available Commands*\n\n` +
@@ -813,7 +813,7 @@ async function handleHelp(msg) {
     `*General Commands:*\n` +
     `• /add\\_sources [chat\\_ids] \\- Add source chats\n` +
     `• /add\\_destinations [chat\\_ids] \\- Add destination chats\n` +
-    `• /list _ids] \\- View source chats\n` +
+    `• /list\\_sources \\- View source chats\n` +
     `• /list\\_destinations \\- View destination chats\n` +
     `• /remove\\_sources [chat\\_ids] \\- Remove source chats\n` +
     `• /remove\\_destinations [chat\\_ids] \\- Remove destination chats\n` +
@@ -968,12 +968,25 @@ bot.on('channel_post', async (msg) => {
   }
 });
 
-// Error handling with improved logging
-bot.on('polling_error', (error) => {
+// Improved polling error handler
+function handlePollingError(error) {
   if (!error.message.includes('EFATAL')) {
     logger.error('Polling error:', error.message);
+    
+    // Attempt to restart polling after a delay
+    setTimeout(() => {
+      try {
+        bot.startPolling();
+        logger.info('Polling restarted successfully');
+      } catch (e) {
+        logger.error('Failed to restart polling:', e.message);
+      }
+    }, 5000);
   }
-});
+}
+
+// Error handling with improved logging
+bot.on('polling_error', handlePollingError);
 
 // Process error handling with improved logging
 process.on('unhandledRejection', (error) => {
